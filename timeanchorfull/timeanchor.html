@@ -1,0 +1,1011 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TimeAnchor — AuDHD Time-Blocking Prototype</title>
+<style>
+  :root{
+    --bg: #f6f4ef;
+    --card: #ffffff;
+    --border: #e3ded3;
+    --text: #2c2a27;
+    --muted: #706a5f;
+    --muted-2: #8a8477;
+    --track: #eae6db;
+    --accent: #4d6b86;
+    --focus-ring: #2c6e9e;
+    --danger-quiet: #b3763f;
+
+    --cat-buffer: #9aa0a1;
+    --cat-buffer-tint: #eef0ef;
+
+    --radius-lg: 16px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#1c1b19;
+      --card:#252320;
+      --border:#38352f;
+      --text:#ece8e0;
+      --muted:#b3ab9c;
+      --muted-2:#948c7c;
+      --track:#3a372f;
+      --accent:#8fb4d1;
+      --focus-ring:#8fd0ff;
+      --cat-buffer:#7c8283;
+      --cat-buffer-tint:#2c2e2c;
+    }
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    line-height:1.45;
+  }
+  a, button, input, select, textarea{ font-family:inherit; }
+  button{ cursor:pointer; }
+  button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible{
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  .visually-hidden{
+    position:absolute !important; width:1px;height:1px; padding:0;margin:-1px;
+    overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+  }
+
+  /* ---------- Header ---------- */
+  header.app-header{
+    position:sticky; top:0; z-index:20;
+    background:var(--bg);
+    border-bottom:1px solid var(--border);
+    padding:14px 20px;
+    display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  }
+  .brand{ display:flex; flex-direction:column; gap:2px; }
+  .brand h1{ margin:0; font-size:20px; letter-spacing:.2px; }
+  .brand p{ margin:0; font-size:12.5px; color:var(--muted); }
+  .header-controls{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+
+  .demo-speed{
+    display:flex; align-items:center; gap:8px;
+    border:1px solid var(--border); background:var(--card);
+    border-radius: 999px; padding:4px; font-size:12.5px;
+  }
+  .demo-speed .demo-speed-label{ color:var(--muted); padding-left:8px; white-space:nowrap; }
+  .demo-speed .seg{ display:flex; gap:2px; }
+  .demo-speed button{
+    border:none; background:transparent; color:var(--text);
+    padding:6px 11px; border-radius:999px; font-size:12.5px; font-weight:600;
+  }
+  .demo-speed button.active{ background:var(--accent); color:#fff; }
+  .sim-clock{ font-size:12.5px; color:var(--muted); white-space:nowrap; }
+  .sim-clock strong{ color:var(--text); font-variant-numeric:tabular-nums; }
+
+  .icon-btn{
+    border:1px solid var(--border); background:var(--card); color:var(--text);
+    border-radius:999px; width:36px; height:36px; display:flex; align-items:center; justify-content:center;
+    font-size:16px;
+  }
+  .primary-btn{
+    border:none; background:var(--accent); color:#fff; font-weight:600;
+    padding:9px 16px; border-radius:999px; font-size:13.5px;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .ghost-btn{
+    border:1px solid var(--border); background:var(--card); color:var(--text);
+    padding:8px 13px; border-radius:999px; font-size:13px; font-weight:600;
+  }
+  .quiet-btn{
+    border:1px solid var(--border); background:transparent; color:var(--text);
+    padding:6px 11px; border-radius:8px; font-size:12.5px;
+  }
+  .text-btn{
+    border:none; background:transparent; color:var(--accent); font-weight:600; font-size:13px; padding:4px 2px;
+  }
+
+  /* ---------- Layout ---------- */
+  main.layout{
+    max-width:1120px; margin:0 auto; padding:20px;
+    display:grid; grid-template-columns: 380px 1fr; gap:20px; align-items:start;
+  }
+  @media (max-width: 880px){
+    main.layout{ grid-template-columns: 1fr; }
+  }
+  .panel{
+    background:var(--card); border:1px solid var(--border); border-radius:var(--radius-lg);
+    padding:18px;
+  }
+  .panel h2{ margin:0 0 10px 0; font-size:15px; }
+  .focus-panel{ position:sticky; top:78px; }
+  @media (max-width:880px){ .focus-panel{ position:static; } }
+
+  footer.app-footer{
+    max-width:1120px; margin:0 auto; padding:8px 20px 40px; color:var(--muted-2); font-size:12px;
+  }
+
+  /* ---------- Category chip ---------- */
+  .cat-chip{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:12px; font-weight:600; padding:3px 9px; border-radius:999px;
+    border:1px solid transparent;
+  }
+
+  /* ---------- Pie timer ---------- */
+  .pie-wrap{ position:relative; display:inline-flex; align-items:center; justify-content:center; }
+  .pie-outer{
+    border-radius:50%;
+    background: conic-gradient(var(--pie-color, var(--accent)) 0% var(--frac, 100%), var(--track) var(--frac, 100%) 100%);
+    transition: background 0.25s linear;
+    display:flex; align-items:center; justify-content:center;
+  }
+  @media (prefers-reduced-motion: reduce){
+    .pie-outer{ transition:none; }
+  }
+  .pie-hole{
+    background:var(--card);
+    border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    flex-direction:column;
+  }
+  .pie-label{ font-weight:700; font-variant-numeric:tabular-nums; }
+  .pie.overrun .pie-outer{ box-shadow: 0 0 0 3px var(--danger-quiet) inset; }
+  @media not (prefers-reduced-motion: reduce){
+    .pie.overrun .pie-outer{ animation: gentlePulse 2.4s ease-in-out infinite; }
+  }
+  @keyframes gentlePulse{ 0%,100%{ opacity:1 } 50%{ opacity:.8 } }
+
+  /* ---------- Focus panel content ---------- */
+  .focus-empty{ color:var(--muted); font-size:13.5px; padding:10px 2px; }
+  .focus-empty .next-line{ margin-top:6px; color:var(--text); }
+  .focus-current{ display:flex; flex-direction:column; align-items:center; text-align:center; gap:10px; }
+  .focus-current .big-pie{ margin:6px 0 2px; }
+  .focus-title{ font-size:17px; font-weight:700; margin:0; }
+  .focus-time-range{ font-size:12.5px; color:var(--muted); }
+  .focus-remaining-text{ font-size:13.5px; margin:0; }
+  .focus-actions{ display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:6px; }
+
+  .overrun-banner{
+    width:100%; text-align:left; background:var(--cat-buffer-tint);
+    border:1px solid var(--border); border-radius:var(--radius-md);
+    padding:12px; font-size:13px; margin-top:4px;
+  }
+  .overrun-banner p{ margin:0 0 8px; }
+  .overrun-row{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .overrun-row input[type=number]{ width:56px; padding:5px 6px; border-radius:6px; border:1px solid var(--border); background:var(--card); color:var(--text); }
+
+  .subtask-list{ width:100%; text-align:left; list-style:none; margin:6px 0 0; padding:0; display:flex; flex-direction:column; gap:6px; }
+  .subtask-list li{ display:flex; align-items:center; gap:8px; font-size:13px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background:var(--bg); }
+  .subtask-list li.done{ color:var(--muted); }
+  .subtask-list li.done .subtask-title{ text-decoration: line-through; text-decoration-color:var(--muted-2); }
+  .subtask-list input[type=checkbox]{ width:16px;height:16px; }
+  .subtask-est{ margin-left:auto; color:var(--muted); font-variant-numeric:tabular-nums; }
+
+  .soundtrack-stub{
+    width:100%; margin-top:4px; display:flex; align-items:center; gap:10px;
+    border:1px dashed var(--border); border-radius:var(--radius-md); padding:9px 12px; font-size:12.5px; color:var(--muted);
+  }
+  .soundtrack-stub .play-toggle{
+    width:30px;height:30px;border-radius:50%; border:1px solid var(--border); background:var(--card); color:var(--text); flex:none;
+  }
+  .soundtrack-bar{ flex:1; height:5px; border-radius:999px; background:var(--track); overflow:hidden; }
+  .soundtrack-bar > span{ display:block; height:100%; background:var(--accent); }
+
+  /* ---------- Timeline ---------- */
+  .timeline-toolbar{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; gap:10px; flex-wrap:wrap; }
+  .timeline-list{ display:flex; flex-direction:column; }
+  .tl-gap{ display:flex; align-items:center; justify-content:center; padding:2px 0; }
+  .tl-gap button{
+    font-size:11px; color:var(--muted); background:transparent; border:1px dashed var(--border);
+    border-radius:999px; padding:3px 10px;
+  }
+  .tl-gap button:hover{ color:var(--text); border-color:var(--accent); }
+
+  .block-row{
+    display:flex; gap:12px; align-items:flex-start;
+    background:var(--card); border:1px solid var(--border); border-radius:var(--radius-md);
+    padding:12px 14px; margin:6px 0; border-left-width:6px; border-left-style:solid;
+  }
+  .block-row.is-buffer{
+    background-image: repeating-linear-gradient(135deg, color-mix(in srgb, var(--cat-buffer) 12%, transparent) 0 7px, transparent 7px 14px);
+    border-left-color: var(--cat-buffer);
+  }
+  .block-row.is-current{ box-shadow: 0 0 0 2px var(--accent); }
+  .block-row.is-done{ opacity:.68; }
+  .block-main{ flex:1; min-width:0; }
+  .block-top-line{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .block-title{ font-weight:700; font-size:14px; margin:0; }
+  .block-meta{ font-size:12px; color:var(--muted); margin-top:3px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .status-tag{ font-size:11.5px; font-weight:600; padding:2px 8px; border-radius:999px; border:1px solid var(--border); color:var(--muted); }
+  .status-tag.now{ color:#fff; background:var(--accent); border-color:var(--accent); }
+  .status-tag.over{ color:var(--danger-quiet); border-color:var(--danger-quiet); background:transparent; }
+  .status-tag.wait{ color:var(--muted); border-style:dashed; }
+  .block-actions{ display:flex; gap:6px; align-items:center; flex:none; }
+  .icon-mini{ border:1px solid var(--border); background:transparent; color:var(--muted); width:28px;height:28px; border-radius:7px; font-size:13px; }
+  .icon-mini:hover{ color:var(--text); }
+  .subtask-badge{ font-size:11.5px; color:var(--muted); }
+
+  /* ---------- Dialogs ---------- */
+  dialog{
+    border:none; border-radius:var(--radius-lg); padding:0; width:min(520px, 92vw);
+    background:var(--card); color:var(--text);
+  }
+  dialog::backdrop{ background:rgba(20,18,14,.45); }
+  .dialog-inner{ padding:20px; max-height:82vh; overflow:auto; }
+  .dialog-inner h2{ margin:0 0 4px; font-size:17px; }
+  .dialog-sub{ margin:0 0 16px; font-size:12.5px; color:var(--muted); }
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:12.5px; font-weight:600; margin-bottom:5px; }
+  .field input[type=text], .field input[type=time], .field input[type=number], .field select{
+    width:100%; padding:9px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text); font-size:13.5px;
+  }
+  .field-row{ display:flex; gap:10px; }
+  .field-row .field{ flex:1; }
+  .checkbox-field{ display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:12px; }
+  .checkbox-field input{ width:16px; height:16px; }
+  .nudge-box{
+    background: var(--cat-buffer-tint); border:1px solid var(--border); border-radius:var(--radius-md);
+    padding:11px 12px; font-size:12.5px; margin-bottom:14px;
+  }
+  .nudge-box p{ margin:0 0 8px; }
+  .nudge-actions{ display:flex; gap:8px; }
+  .subtask-editor-row{ display:flex; gap:6px; margin-bottom:6px; align-items:center; }
+  .subtask-editor-row input[type=text]{ flex:1; }
+  .subtask-editor-row input[type=number]{ width:64px; }
+  .dialog-actions{ display:flex; justify-content:space-between; gap:8px; margin-top:18px; }
+  .dialog-actions .right-group{ display:flex; gap:8px; }
+  .color-swatch-input{ width:44px; height:32px; padding:2px; border:1px solid var(--border); border-radius:6px; background:var(--bg); }
+  .cat-manage-row{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .cat-manage-row input[type=text].cname{ flex:1; }
+  .cat-manage-row input[type=text].cicon{ width:44px; text-align:center; }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">
+    <h1>TimeAnchor</h1>
+    <p>A time-blocking prototype for time-blindness &middot; no account, nothing saved</p>
+  </div>
+  <div class="header-controls">
+    <div class="demo-speed" role="group" aria-label="Demo speed control, prototype testing only">
+      <span class="demo-speed-label">Demo speed (testing only):</span>
+      <div class="seg" id="speedSeg">
+        <button type="button" data-action="speed" data-speed="1">1x</button>
+        <button type="button" data-action="speed" data-speed="10">10x</button>
+        <button type="button" data-action="speed" data-speed="60">60x</button>
+      </div>
+    </div>
+    <div class="sim-clock">Simulated time: <strong id="simClockText">--:--</strong></div>
+    <button type="button" class="icon-btn" id="settingsBtn" aria-label="Settings: manage categories and nudge threshold">⚙️</button>
+    <button type="button" class="primary-btn" data-action="new-block">+ New block</button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="panel focus-panel" aria-labelledby="focusHeading">
+    <h2 id="focusHeading">Right now</h2>
+    <div id="focusPanelBody"></div>
+  </section>
+
+  <section class="panel" aria-labelledby="timelineHeading">
+    <div class="timeline-toolbar">
+      <h2 id="timelineHeading" style="margin:0;">Today's timeline</h2>
+    </div>
+    <div class="timeline-list" id="timelineList"></div>
+  </section>
+</main>
+
+<footer class="app-footer">
+  Prototype notes: all data lives only in this browser tab's memory (no localStorage, no backend, no login) and resets on reload.
+  The demo-speed control accelerates the simulated clock so the shrinking timers are easy to test — it is not a real product feature.
+</footer>
+
+<div id="ariaLive" class="visually-hidden" aria-live="polite"></div>
+
+<dialog id="blockDialog" aria-labelledby="blockDialogTitle">
+  <div class="dialog-inner" id="blockDialogInner"></div>
+</dialog>
+
+<dialog id="settingsDialog" aria-labelledby="settingsDialogTitle">
+  <div class="dialog-inner" id="settingsDialogInner"></div>
+</dialog>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------------------------------------------------------------
+     Utilities
+  --------------------------------------------------------------------- */
+  let uidCounter = 1;
+  function uid(prefix){ return prefix + "_" + (uidCounter++) + "_" + Math.random().toString(36).slice(2,7); }
+
+  function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+  function fmtClock(mFloat){
+    let m = ((mFloat % 1440) + 1440) % 1440;
+    let h = Math.floor(m / 60);
+    let mm = Math.floor(m % 60);
+    let ampm = h < 12 ? "AM" : "PM";
+    let h12 = h % 12; if (h12 === 0) h12 = 12;
+    return h12 + ":" + String(mm).padStart(2, "0") + " " + ampm;
+  }
+  function fmtClock24(mFloat){
+    let m = ((Math.round(mFloat) % 1440) + 1440) % 1440;
+    let h = Math.floor(m / 60), mm = m % 60;
+    return String(h).padStart(2,"0") + ":" + String(mm).padStart(2,"0");
+  }
+  function parseTime24(str){
+    const parts = (str || "00:00").split(":");
+    return (parseInt(parts[0],10) || 0) * 60 + (parseInt(parts[1],10) || 0);
+  }
+  function fmtDuration(min){
+    min = Math.round(min);
+    if (min < 60) return min + "m";
+    const h = Math.floor(min/60), r = min % 60;
+    return r ? (h + "h " + r + "m") : (h + "h");
+  }
+
+  const BUFFER_META = { name: "Buffer", color: "#9aa0a1", icon: "⏳" };
+
+  /* ---------------------------------------------------------------------
+     State (in-memory only — no localStorage / sessionStorage)
+  --------------------------------------------------------------------- */
+  const state = {
+    nudgeThreshold: 45,
+    categories: [
+      { id: "work",     name: "Work",     color: "#5b7fa6", icon: "💼" },
+      { id: "admin",    name: "Admin",    color: "#ab8657", icon: "🗂️" },
+      { id: "rest",     name: "Rest",     color: "#6f9c7d", icon: "🌿" },
+      { id: "personal", name: "Personal", color: "#9a7bb0", icon: "🌸" }
+    ],
+    blocks: [
+      mkBlock("Deep Work", "work", 540, 45, false, [], false),
+      mkBuffer(585, 10),
+      mkBlock("Write project report", "work", 595, 60, false, [
+        { id: uid("st"), title: "Outline", est: 15, done: false },
+        { id: uid("st"), title: "Draft intro", est: 20, done: false },
+        { id: uid("st"), title: "Draft body", est: 15, done: false },
+        { id: uid("st"), title: "Review & send", est: 10, done: false }
+      ], false),
+      mkBuffer(655, 10),
+      mkBlock("Email & admin", "admin", 665, 30, false, [], false),
+      mkBuffer(695, 10),
+      mkBlock("Call with Mia", "personal", 705, 30, false, [], false),
+      mkBlock("Lunch", "rest", 735, 45, false, [], false),
+      mkBuffer(780, 10),
+      mkBlock("Focus sprint", "work", 790, 60, false, [], true),
+      mkBuffer(850, 10),
+      mkBlock("Admin catch-up", "admin", 860, 30, false, [], false),
+      mkBlock("Afternoon walk", "rest", 890, 40, false, [], false)
+    ],
+    simNow: 552, // 9:12am — mid-way through the first block, so a timer is already visibly shrinking
+    speed: 1
+  };
+
+  function mkBlock(title, categoryId, start, duration, isBuffer, subtasks, soundtrackEnabled){
+    return {
+      id: uid("blk"), title, categoryId, start, duration,
+      isBuffer: !!isBuffer, subtasks: subtasks || [],
+      soundtrackEnabled: !!soundtrackEnabled, status: "pending"
+    };
+  }
+  function mkBuffer(start, duration){
+    return mkBlock("Buffer", null, start, duration, true, [], false);
+  }
+
+  function catFor(block){
+    if (block.isBuffer || !block.categoryId) return BUFFER_META;
+    return state.categories.find(c => c.id === block.categoryId) || BUFFER_META;
+  }
+  function sortedBlocks(){ return [...state.blocks].sort((a,b) => a.start - b.start); }
+
+  function getCurrentBlock(){
+    for (const b of sortedBlocks()){
+      if (b.status !== "done" && state.simNow >= b.start) return b;
+    }
+    return null;
+  }
+  function getNextUpcoming(){
+    const cur = getCurrentBlock();
+    const list = sortedBlocks();
+    if (cur){
+      const idx = list.findIndex(b => b.id === cur.id);
+      for (let i = idx+1; i < list.length; i++) if (list[i].status !== "done") return list[i];
+      return null;
+    }
+    for (const b of list) if (b.status !== "done") return b;
+    return null;
+  }
+
+  function shiftBlocksFrom(pointMinutes, deltaMinutes, excludeIds){
+    excludeIds = excludeIds || new Set();
+    state.blocks.forEach(b => {
+      if (!excludeIds.has(b.id) && b.start >= pointMinutes) b.start += deltaMinutes;
+    });
+  }
+
+  /* ---------------------------------------------------------------------
+     Rendering: Pie timer
+  --------------------------------------------------------------------- */
+  function pieMarkup(fraction, colorHex, sizePx, holeRatio, holeLabel, overrun, idAttr){
+    const pct = clamp(fraction, 0, 1) * 100;
+    const holeSize = Math.round(sizePx * holeRatio);
+    const idBit = idAttr ? ' id="' + idAttr + '"' : "";
+    return (
+      '<div class="pie-wrap pie' + (overrun ? ' overrun' : '') + '"' + idBit + ' style="width:' + sizePx + 'px;height:' + sizePx + 'px;">' +
+        '<div class="pie-outer" style="width:' + sizePx + 'px;height:' + sizePx + 'px;--frac:' + pct.toFixed(2) + '%;--pie-color:' + colorHex + ';">' +
+          '<div class="pie-hole" style="width:' + holeSize + 'px;height:' + holeSize + 'px;">' +
+            (holeLabel ? '<span class="pie-label" style="font-size:' + Math.round(sizePx*0.14) + 'px;">' + holeLabel + '</span>' : '') +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function timeInfo(block){
+    const end = block.start + block.duration;
+    const remaining = end - state.simNow;
+    const fraction = clamp(remaining / block.duration, 0, 1);
+    const overrun = remaining <= 0;
+    return { end, remaining, fraction, overrun };
+  }
+
+  /* ---------------------------------------------------------------------
+     Rendering: Focus panel
+  --------------------------------------------------------------------- */
+  function renderFocusPanel(){
+    const el = document.getElementById("focusPanelBody");
+    const cur = getCurrentBlock();
+
+    if (!cur){
+      const next = getNextUpcoming();
+      if (next){
+        const cat = catFor(next);
+        el.innerHTML =
+          '<div class="focus-empty">' +
+            '<p>Nothing scheduled right now &mdash; this is open time.</p>' +
+            '<p class="next-line">Next up: <strong>' + escapeHtml(next.title) + '</strong> (' + cat.icon + ' ' + escapeHtml(cat.name) + ') at ' + fmtClock(next.start) + '.</p>' +
+            '<div class="focus-actions"><button type="button" class="ghost-btn" data-action="start-now" data-id="' + next.id + '">Start it now</button></div>' +
+          '</div>';
+      } else {
+        el.innerHTML = '<div class="focus-empty"><p>All blocks for today are marked done. Nothing else is scheduled.</p></div>';
+      }
+      updateAriaLive("Nothing is currently active.");
+      return;
+    }
+
+    const cat = catFor(cur);
+    const { remaining, fraction, overrun } = timeInfo(cur);
+    const holeLabel = overrun ? "Time's up" : (Math.ceil(remaining) + "m");
+    const pie = pieMarkup(fraction, cat.color, 190, 0.62, holeLabel, overrun, "focusPie");
+
+    let subtasksHtml = "";
+    if (!cur.isBuffer && cur.subtasks && cur.subtasks.length){
+      subtasksHtml = '<ul class="subtask-list">' + cur.subtasks.map(st =>
+        '<li class="' + (st.done ? "done" : "") + '">' +
+          '<input type="checkbox" id="sub_' + st.id + '" data-action="toggle-subtask" data-block="' + cur.id + '" data-sub="' + st.id + '" ' + (st.done ? "checked" : "") + ' aria-label="Mark step \'' + escapeAttr(st.title) + '\' done">' +
+          '<label class="subtask-title" for="sub_' + st.id + '">' + escapeHtml(st.title) + '</label>' +
+          '<span class="subtask-est">' + st.est + 'm</span>' +
+        '</li>'
+      ).join("") + '</ul>';
+    }
+
+    let soundtrackHtml = "";
+    if (!cur.isBuffer && cur.soundtrackEnabled){
+      const played = clamp(1 - fraction, 0, 1) * 100;
+      soundtrackHtml =
+        '<div class="soundtrack-stub">' +
+          '<button type="button" class="play-toggle" data-action="toggle-play" aria-label="' + (cur._playing ? "Pause" : "Play") + ' placeholder soundtrack">' + (cur._playing ? "⏸" : "▶") + '</button>' +
+          '<div>' +
+            '<div>' + escapeHtml(cat.name) + ' mix &middot; ' + fmtDuration(cur.duration) + ' (prototype stub, no audio)</div>' +
+            '<div class="soundtrack-bar"><span style="width:' + played.toFixed(1) + '%;"></span></div>' +
+          '</div>' +
+        '</div>';
+    }
+
+    let overrunHtml = "";
+    if (overrun){
+      const suggested = Math.max(5, Math.ceil(Math.abs(remaining)/5)*5);
+      overrunHtml =
+        '<div class="overrun-banner">' +
+          '<p>This block ran over by about ' + Math.ceil(Math.abs(remaining)) + ' minutes. You can extend it, or push the rest of today later so the schedule matches reality.</p>' +
+          '<div class="overrun-row">' +
+            '<button type="button" class="quiet-btn" data-action="reflow" data-id="' + cur.id + '" data-min="5">Reflow +5m</button>' +
+            '<button type="button" class="quiet-btn" data-action="reflow" data-id="' + cur.id + '" data-min="10">Reflow +10m</button>' +
+            '<button type="button" class="quiet-btn" data-action="reflow" data-id="' + cur.id + '" data-min="' + suggested + '">Reflow +' + suggested + 'm (match overrun)</button>' +
+          '</div>' +
+        '</div>';
+    }
+
+    el.innerHTML =
+      '<div class="focus-current">' +
+        '<span class="cat-chip" style="color:' + cat.color + '; background:color-mix(in srgb, ' + cat.color + ' 16%, transparent); border-color:' + cat.color + ';">' + cat.icon + ' ' + escapeHtml(cat.name) + '</span>' +
+        '<div class="big-pie">' + pie + '</div>' +
+        '<p class="focus-title">' + escapeHtml(cur.title) + '</p>' +
+        '<p class="focus-time-range">' + fmtClock(cur.start) + '&ndash;' + fmtClock(cur.start + cur.duration) + ' &middot; ' + fmtDuration(cur.duration) + (overrun ? " (running over)" : "") + '</p>' +
+        '<p class="focus-remaining-text" id="focusRemainingText">' + remainingSentence(cur, remaining, overrun) + '</p>' +
+        subtasksHtml +
+        soundtrackHtml +
+        overrunHtml +
+        '<div class="focus-actions">' +
+          '<button type="button" class="ghost-btn" data-action="extend" data-id="' + cur.id + '" data-min="5">+5m</button>' +
+          '<button type="button" class="ghost-btn" data-action="extend" data-id="' + cur.id + '" data-min="10">+10m</button>' +
+          '<button type="button" class="primary-btn" data-action="done" data-id="' + cur.id + '">Mark done</button>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function remainingSentence(block, remaining, overrun){
+    if (overrun) return block.title + ": time is up. Extend it or reflow the rest of today.";
+    return Math.ceil(remaining) + " minute" + (Math.ceil(remaining) === 1 ? "" : "s") + " remaining on " + block.title + ".";
+  }
+
+  let lastAnnounced = "";
+  function updateAriaLive(text){
+    if (text === lastAnnounced) return;
+    lastAnnounced = text;
+    document.getElementById("ariaLive").textContent = text;
+  }
+
+  /* ---------------------------------------------------------------------
+     Rendering: Timeline
+  --------------------------------------------------------------------- */
+  function statusFor(block, curId){
+    if (block.status === "done") return { label: "Completed", cls: "" };
+    if (block.id === curId){
+      const { overrun } = timeInfo(block);
+      return overrun ? { label: "Running over", cls: "over" } : { label: "In progress", cls: "now" };
+    }
+    if (block.start > state.simNow) return { label: "Upcoming", cls: "" };
+    return { label: "Waiting — running behind", cls: "wait" };
+  }
+
+  function renderTimeline(){
+    const list = sortedBlocks();
+    const cur = getCurrentBlock();
+    const curId = cur ? cur.id : null;
+    const el = document.getElementById("timelineList");
+
+    let html = "";
+    list.forEach((block, i) => {
+      const cat = catFor(block);
+      const st = statusFor(block, curId);
+      const isCurrent = block.id === curId;
+      let miniTimer = "";
+      if (isCurrent){
+        const { fraction, remaining, overrun } = timeInfo(block);
+        miniTimer = pieMarkup(fraction, cat.color, 40, 0.5, "", overrun, null);
+      }
+      let subtaskBadge = "";
+      if (!block.isBuffer && block.subtasks && block.subtasks.length){
+        const done = block.subtasks.filter(s => s.done).length;
+        subtaskBadge = '<span class="subtask-badge">' + done + '/' + block.subtasks.length + ' steps</span>';
+      }
+
+      html +=
+        '<div class="block-row' + (block.isBuffer ? " is-buffer" : "") + (isCurrent ? " is-current" : "") + (block.status === "done" ? " is-done" : "") + '" style="border-left-color:' + cat.color + ';">' +
+          (miniTimer ? miniTimer : "") +
+          '<div class="block-main">' +
+            '<div class="block-top-line">' +
+              '<span class="cat-chip" style="color:' + cat.color + '; background:color-mix(in srgb, ' + cat.color + ' 16%, transparent); border-color:' + cat.color + ';">' + cat.icon + ' ' + escapeHtml(cat.name) + '</span>' +
+              '<p class="block-title">' + escapeHtml(block.title) + '</p>' +
+            '</div>' +
+            '<div class="block-meta">' +
+              '<span>' + fmtClock(block.start) + '&ndash;' + fmtClock(block.start + block.duration) + ' &middot; ' + fmtDuration(block.duration) + '</span>' +
+              '<span class="status-tag ' + st.cls + '">' + st.label + '</span>' +
+              subtaskBadge +
+            '</div>' +
+          '</div>' +
+          '<div class="block-actions">' +
+            '<button type="button" class="icon-mini" data-action="edit" data-id="' + block.id + '" aria-label="Edit ' + escapeAttr(block.title) + '">✏️</button>' +
+            '<button type="button" class="icon-mini" data-action="delete" data-id="' + block.id + '" aria-label="Delete ' + escapeAttr(block.title) + '">🗑️</button>' +
+          '</div>' +
+        '</div>';
+
+      html += '<div class="tl-gap"><button type="button" data-action="insert-buffer" data-after="' + block.id + '">+ insert 5-min buffer</button></div>';
+    });
+
+    el.innerHTML = html || '<p style="color:var(--muted);font-size:13px;">No blocks yet. Use "+ New block" to add one.</p>';
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+  function escapeAttr(s){ return escapeHtml(s); }
+
+  /* ---------------------------------------------------------------------
+     Full render + tick loop
+  --------------------------------------------------------------------- */
+  function render(){
+    renderFocusPanel();
+    renderTimeline();
+  }
+
+  function updateSimClock(){
+    document.getElementById("simClockText").textContent = fmtClock(state.simNow);
+    document.querySelectorAll("#speedSeg button").forEach(b => {
+      b.classList.toggle("active", parseInt(b.dataset.speed,10) === state.speed);
+    });
+  }
+
+  let lastTickMs = performance.now();
+  function tick(){
+    const now = performance.now();
+    const deltaSec = (now - lastTickMs) / 1000;
+    lastTickMs = now;
+    state.simNow += (deltaSec / 60) * state.speed;
+    if (state.simNow >= 1440) state.simNow -= 1440;
+    updateSimClock();
+    render();
+  }
+  setInterval(tick, 200);
+
+  /* ---------------------------------------------------------------------
+     Actions (event delegation)
+  --------------------------------------------------------------------- */
+  document.addEventListener("click", function(e){
+    const t = e.target.closest("[data-action]");
+    if (!t) return;
+    const action = t.dataset.action;
+
+    if (action === "speed"){
+      state.speed = parseInt(t.dataset.speed, 10);
+      updateSimClock();
+      return;
+    }
+    if (action === "new-block"){ openBlockForm(null); return; }
+    if (action === "edit"){
+      const b = state.blocks.find(x => x.id === t.dataset.id);
+      if (b) openBlockForm(b);
+      return;
+    }
+    if (action === "delete"){
+      const b = state.blocks.find(x => x.id === t.dataset.id);
+      if (b && confirm('Delete "' + b.title + '"? This can\'t be undone.')){
+        state.blocks = state.blocks.filter(x => x.id !== b.id);
+        render();
+      }
+      return;
+    }
+    if (action === "insert-buffer"){
+      insertBufferAfter(t.dataset.after);
+      return;
+    }
+    if (action === "done"){
+      const b = state.blocks.find(x => x.id === t.dataset.id);
+      if (b) { b.status = "done"; render(); }
+      return;
+    }
+    if (action === "extend"){
+      const b = state.blocks.find(x => x.id === t.dataset.id);
+      const min = parseInt(t.dataset.min, 10) || 5;
+      if (b) { b.duration += min; render(); }
+      return;
+    }
+    if (action === "reflow"){
+      const b = state.blocks.find(x => x.id === t.dataset.id);
+      const min = parseInt(t.dataset.min, 10) || 5;
+      if (b) { reflowAfter(b, min); render(); }
+      return;
+    }
+    if (action === "start-now"){
+      const b = state.blocks.find(x => x.id === t.dataset.id);
+      if (b){
+        const oldStart = b.start;
+        const newStart = Math.round(state.simNow);
+        const delta = newStart - oldStart;
+        if (delta !== 0){
+          state.blocks.forEach(other => { if (other.id !== b.id && other.start > oldStart) other.start += delta; });
+          b.start = newStart;
+        }
+        render();
+      }
+      return;
+    }
+    if (action === "toggle-play"){
+      const cur = getCurrentBlock();
+      if (cur) { cur._playing = !cur._playing; render(); }
+      return;
+    }
+  });
+
+  document.addEventListener("change", function(e){
+    const t = e.target.closest("[data-action='toggle-subtask']");
+    if (!t) return;
+    const b = state.blocks.find(x => x.id === t.dataset.block);
+    if (!b) return;
+    const st = (b.subtasks || []).find(s => s.id === t.dataset.sub);
+    if (st) { st.done = t.checked; render(); }
+  });
+
+  function insertBufferAfter(afterId){
+    const after = state.blocks.find(b => b.id === afterId);
+    if (!after) return;
+    const point = after.start + after.duration;
+    const buf = mkBuffer(point, 5);
+    state.blocks.push(buf);
+    shiftBlocksFrom(point, 5, new Set([buf.id]));
+    render();
+  }
+
+  // Pushes every block scheduled after `block`'s planned end forward by `minutes`,
+  // so the rest of the day reflects an overrun instead of silently going stale.
+  function reflowAfter(block, minutes){
+    const point = block.start + block.duration;
+    shiftBlocksFrom(point, minutes, new Set());
+  }
+
+  /* ---------------------------------------------------------------------
+     Block Add/Edit dialog
+  --------------------------------------------------------------------- */
+  const blockDialog = document.getElementById("blockDialog");
+  let formSubtasks = [];
+  let formDismissedNudge = false;
+  let formEditingId = null;
+  let formIsBuffer = false;
+
+  function suggestedNewStart(){
+    const list = sortedBlocks();
+    if (!list.length) return Math.round(state.simNow / 5) * 5;
+    const last = list[list.length - 1];
+    return last.start + last.duration;
+  }
+
+  function openBlockForm(block){
+    formEditingId = block ? block.id : null;
+    formIsBuffer = block ? block.isBuffer : false;
+    formSubtasks = block && block.subtasks ? block.subtasks.map(s => ({...s})) : [];
+    formDismissedNudge = false;
+    renderBlockDialog(block);
+    blockDialog.showModal();
+    document.getElementById("bd_title").focus();
+  }
+
+  function renderBlockDialog(block){
+    const isEdit = !!block;
+    const title = block ? block.title : "";
+    const categoryId = block ? block.categoryId : state.categories[0].id;
+    const startStr = fmtClock24(block ? block.start : suggestedNewStart());
+    const duration = block ? block.duration : 30;
+    const soundtrackEnabled = block ? !!block.soundtrackEnabled : false;
+
+    const catOptions = state.categories.map(c =>
+      '<option value="' + c.id + '"' + (c.id === categoryId ? " selected" : "") + '>' + c.icon + ' ' + escapeHtml(c.name) + '</option>'
+    ).join("");
+
+    let bodyFields = "";
+    if (!formIsBuffer){
+      bodyFields =
+        '<div class="field"><label for="bd_category">Category</label>' +
+          '<select id="bd_category">' + catOptions + '</select>' +
+        '</div>' +
+        '<div id="bd_nudge"></div>' +
+        '<div class="field"><button type="button" class="text-btn" id="bd_addStepLink">+ Add a step</button></div>' +
+        '<div id="bd_subtasks"></div>' +
+        '<div class="checkbox-field">' +
+          '<input type="checkbox" id="bd_soundtrack" ' + (soundtrackEnabled ? "checked" : "") + '>' +
+          '<label for="bd_soundtrack">Play a timer-length soundtrack for this block (prototype stub)</label>' +
+        '</div>' +
+        '<div class="checkbox-field">' +
+          '<input type="checkbox" id="bd_addBuffer">' +
+          '<label for="bd_addBuffer">Add a short buffer right after this block</label>' +
+        '</div>' +
+        '<div class="field" id="bd_bufferMinWrap" style="display:none;">' +
+          '<label for="bd_bufferMin">Buffer length (minutes)</label>' +
+          '<input type="number" id="bd_bufferMin" min="5" max="20" step="5" value="5">' +
+        '</div>';
+    }
+
+    document.getElementById("blockDialogInner").innerHTML =
+      '<h2 id="blockDialogTitle">' + (isEdit ? (formIsBuffer ? "Edit buffer" : "Edit block") : "New block") + '</h2>' +
+      '<p class="dialog-sub">' + (formIsBuffer ? "Buffers are short transition blocks between tasks." : "Blocks over " + state.nudgeThreshold + " minutes get an optional step-breakdown nudge.") + '</p>' +
+      '<div class="field"><label for="bd_title">Title</label>' +
+        '<input type="text" id="bd_title" value="' + escapeAttr(title) + '" placeholder="' + (formIsBuffer ? "Buffer" : "e.g. Write report") + '"></div>' +
+      '<div class="field-row">' +
+        '<div class="field"><label for="bd_start">Start time</label><input type="time" id="bd_start" value="' + startStr + '"></div>' +
+        '<div class="field"><label for="bd_duration">Duration (minutes)</label><input type="number" id="bd_duration" min="5" step="5" value="' + duration + '"></div>' +
+      '</div>' +
+      bodyFields +
+      '<div class="dialog-actions">' +
+        '<div>' + (isEdit ? '<button type="button" class="quiet-btn" id="bd_delete">Delete</button>' : '') + '</div>' +
+        '<div class="right-group">' +
+          '<button type="button" class="ghost-btn" id="bd_cancel">Cancel</button>' +
+          '<button type="button" class="primary-btn" id="bd_save">Save</button>' +
+        '</div>' +
+      '</div>';
+
+    document.getElementById("bd_cancel").addEventListener("click", () => blockDialog.close());
+    document.getElementById("bd_save").addEventListener("click", () => saveBlockForm());
+    const delBtn = document.getElementById("bd_delete");
+    if (delBtn) delBtn.addEventListener("click", () => {
+      if (confirm("Delete this block? This can't be undone.")){
+        state.blocks = state.blocks.filter(b => b.id !== formEditingId);
+        blockDialog.close();
+        render();
+      }
+    });
+
+    if (!formIsBuffer){
+      const durInput = document.getElementById("bd_duration");
+      durInput.addEventListener("input", renderNudge);
+      renderSubtaskEditor();
+      renderNudge();
+      document.getElementById("bd_addStepLink").addEventListener("click", () => {
+        formSubtasks.push({ id: uid("st"), title: "", est: 10, done: false });
+        renderSubtaskEditor();
+      });
+      const addBufferChk = document.getElementById("bd_addBuffer");
+      addBufferChk.addEventListener("change", () => {
+        document.getElementById("bd_bufferMinWrap").style.display = addBufferChk.checked ? "" : "none";
+      });
+    }
+  }
+
+  function renderNudge(){
+    const wrap = document.getElementById("bd_nudge");
+    if (!wrap) return;
+    const duration = parseInt(document.getElementById("bd_duration").value, 10) || 0;
+    if (duration > state.nudgeThreshold && formSubtasks.length === 0 && !formDismissedNudge){
+      wrap.innerHTML =
+        '<div class="nudge-box">' +
+          '<p>This is a long block &mdash; want to break it into smaller steps?</p>' +
+          '<div class="nudge-actions">' +
+            '<button type="button" class="ghost-btn" id="bd_nudgeYes">Break it down</button>' +
+            '<button type="button" class="text-btn" id="bd_nudgeNo">No thanks</button>' +
+          '</div>' +
+        '</div>';
+      document.getElementById("bd_nudgeYes").addEventListener("click", () => {
+        formSubtasks.push({ id: uid("st"), title: "", est: 15, done: false });
+        formSubtasks.push({ id: uid("st"), title: "", est: 15, done: false });
+        renderSubtaskEditor();
+        renderNudge();
+      });
+      document.getElementById("bd_nudgeNo").addEventListener("click", () => {
+        formDismissedNudge = true;
+        renderNudge();
+      });
+    } else {
+      wrap.innerHTML = "";
+    }
+  }
+
+  function renderSubtaskEditor(){
+    const wrap = document.getElementById("bd_subtasks");
+    if (!wrap) return;
+    wrap.innerHTML = formSubtasks.map((s, i) =>
+      '<div class="subtask-editor-row">' +
+        '<input type="text" data-idx="' + i + '" data-f="title" value="' + escapeAttr(s.title) + '" placeholder="Step name" aria-label="Step ' + (i+1) + ' name">' +
+        '<input type="number" data-idx="' + i + '" data-f="est" value="' + s.est + '" min="1" step="1" aria-label="Step ' + (i+1) + ' estimated minutes">' +
+        '<button type="button" class="icon-mini" data-idx="' + i + '" data-f="remove" aria-label="Remove step ' + (i+1) + '">✕</button>' +
+      '</div>'
+    ).join("");
+    wrap.querySelectorAll("input").forEach(inp => {
+      inp.addEventListener("input", () => {
+        const i = parseInt(inp.dataset.idx, 10);
+        const f = inp.dataset.f;
+        formSubtasks[i][f] = f === "est" ? (parseInt(inp.value,10) || 1) : inp.value;
+      });
+    });
+    wrap.querySelectorAll("button[data-f='remove']").forEach(btn => {
+      btn.addEventListener("click", () => {
+        formSubtasks.splice(parseInt(btn.dataset.idx,10), 1);
+        renderSubtaskEditor();
+        renderNudge();
+      });
+    });
+  }
+
+  function saveBlockForm(){
+    const titleVal = document.getElementById("bd_title").value.trim() || (formIsBuffer ? "Buffer" : "Untitled block");
+    const startVal = parseTime24(document.getElementById("bd_start").value);
+    const durationVal = Math.max(5, parseInt(document.getElementById("bd_duration").value, 10) || 5);
+
+    let block;
+    if (formEditingId){
+      block = state.blocks.find(b => b.id === formEditingId);
+      block.title = titleVal;
+      block.start = startVal;
+      block.duration = durationVal;
+    } else {
+      block = mkBlock(titleVal, null, startVal, durationVal, formIsBuffer, [], false);
+      state.blocks.push(block);
+    }
+
+    if (!formIsBuffer){
+      block.categoryId = document.getElementById("bd_category").value;
+      block.soundtrackEnabled = document.getElementById("bd_soundtrack").checked;
+      block.subtasks = formSubtasks.filter(s => s.title.trim().length > 0).map(s => ({ id: s.id, title: s.title.trim(), est: s.est, done: !!s.done }));
+
+      const addBufferChk = document.getElementById("bd_addBuffer");
+      if (addBufferChk && addBufferChk.checked){
+        const bufMin = parseInt(document.getElementById("bd_bufferMin").value, 10) || 5;
+        const point = block.start + block.duration;
+        const buf = mkBuffer(point, bufMin);
+        state.blocks.push(buf);
+        shiftBlocksFrom(point, bufMin, new Set([buf.id, block.id]));
+      }
+    }
+
+    blockDialog.close();
+    render();
+  }
+
+  /* ---------------------------------------------------------------------
+     Settings dialog (categories + nudge threshold)
+  --------------------------------------------------------------------- */
+  const settingsDialog = document.getElementById("settingsDialog");
+  document.getElementById("settingsBtn").addEventListener("click", () => {
+    renderSettingsDialog();
+    settingsDialog.showModal();
+  });
+
+  function renderSettingsDialog(){
+    const inner = document.getElementById("settingsDialogInner");
+    inner.innerHTML =
+      '<h2 id="settingsDialogTitle">Settings</h2>' +
+      '<p class="dialog-sub">Categories and nudge threshold are configurable for this prototype session.</p>' +
+      '<div class="field"><label for="st_threshold">Task-breakdown nudge threshold (minutes)</label>' +
+        '<input type="number" id="st_threshold" min="10" step="5" value="' + state.nudgeThreshold + '"></div>' +
+      '<h3 style="font-size:13.5px;margin:16px 0 8px;">Categories</h3>' +
+      '<div id="st_catRows"></div>' +
+      '<div class="field"><button type="button" class="text-btn" id="st_addCat">+ Add category</button></div>' +
+      '<div class="dialog-actions"><div></div><div class="right-group"><button type="button" class="primary-btn" id="st_done">Done</button></div></div>';
+
+    document.getElementById("st_threshold").addEventListener("input", (e) => {
+      state.nudgeThreshold = Math.max(5, parseInt(e.target.value, 10) || 45);
+    });
+    document.getElementById("st_addCat").addEventListener("click", () => {
+      state.categories.push({ id: uid("cat"), name: "New category", color: "#84a0ab", icon: "•" });
+      renderCatRows();
+    });
+    document.getElementById("st_done").addEventListener("click", () => {
+      settingsDialog.close();
+      render();
+    });
+    renderCatRows();
+  }
+
+  function renderCatRows(){
+    const wrap = document.getElementById("st_catRows");
+    wrap.innerHTML = state.categories.map(c => {
+      const inUse = state.blocks.some(b => b.categoryId === c.id);
+      return (
+        '<div class="cat-manage-row" data-cat="' + c.id + '">' +
+          '<input type="color" class="color-swatch-input" data-f="color" value="' + c.color + '" aria-label="' + escapeAttr(c.name) + ' color">' +
+          '<input type="text" class="cicon" data-f="icon" value="' + escapeAttr(c.icon) + '" maxlength="2" aria-label="' + escapeAttr(c.name) + ' icon">' +
+          '<input type="text" class="cname" data-f="name" value="' + escapeAttr(c.name) + '" aria-label="Category name">' +
+          '<button type="button" class="icon-mini" data-f="remove" ' + (inUse ? 'disabled title="In use by existing blocks"' : 'title="Delete category"') + '>🗑️</button>' +
+        '</div>'
+      );
+    }).join("");
+
+    wrap.querySelectorAll(".cat-manage-row").forEach(row => {
+      const id = row.dataset.cat;
+      const cat = state.categories.find(c => c.id === id);
+      row.querySelectorAll("input").forEach(inp => {
+        inp.addEventListener("input", () => { cat[inp.dataset.f] = inp.value; });
+      });
+      const rm = row.querySelector("button[data-f='remove']");
+      rm.addEventListener("click", () => {
+        if (rm.disabled) return;
+        state.categories = state.categories.filter(c => c.id !== id);
+        renderCatRows();
+      });
+    });
+  }
+
+  /* ---------------------------------------------------------------------
+     Init
+  --------------------------------------------------------------------- */
+  updateSimClock();
+  render();
+})();
+</script>
+</body>
+</html>

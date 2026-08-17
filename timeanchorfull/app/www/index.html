@@ -1,0 +1,1637 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>TimeAnchor</title>
+<!--
+  Cloud accounts (Supabase). This only works with real network access (the
+  native app, or a normally-hosted copy of this page) — it will not work
+  inside a sandboxed preview that blocks outside requests. If the two
+  constants in the script below are left as placeholders, the app just runs
+  in local-only mode as before; nothing breaks.
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg: #f6f4ef;
+    --card: #ffffff;
+    --border: #e3ded3;
+    --text: #2c2a27;
+    --muted: #706a5f;
+    --muted-2: #8a8477;
+    --track: #eae6db;
+    --accent: #4d6b86;
+    --focus-ring: #2c6e9e;
+    --danger-quiet: #b3763f;
+
+    --cat-buffer: #9aa0a1;
+    --cat-buffer-tint: #eef0ef;
+
+    --radius-lg: 16px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#1c1b19;
+      --card:#252320;
+      --border:#38352f;
+      --text:#ece8e0;
+      --muted:#b3ab9c;
+      --muted-2:#948c7c;
+      --track:#3a372f;
+      --accent:#8fb4d1;
+      --focus-ring:#8fd0ff;
+      --cat-buffer:#7c8283;
+      --cat-buffer-tint:#2c2e2c;
+    }
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    line-height:1.45;
+    -webkit-tap-highlight-color: transparent;
+  }
+  a, button, input, select, textarea{ font-family:inherit; }
+  button{ cursor:pointer; }
+  button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible{
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  .visually-hidden{
+    position:absolute !important; width:1px;height:1px; padding:0;margin:-1px;
+    overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+  }
+
+  /* ---------- Header ---------- */
+  header.app-header{
+    position:sticky; top:0; z-index:20;
+    background:var(--bg);
+    border-bottom:1px solid var(--border);
+    padding: calc(14px + var(--safe-top)) 20px 14px;
+    display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  }
+  .brand{ display:flex; flex-direction:column; gap:2px; }
+  .brand h1{ margin:0; font-size:20px; letter-spacing:.2px; }
+  .brand p{ margin:0; font-size:12.5px; color:var(--muted); }
+  .header-controls{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+
+  .seg{ display:flex; gap:2px; }
+  .seg button{
+    border:none; background:transparent; color:var(--text);
+    padding:6px 11px; border-radius:999px; font-size:12.5px; font-weight:600;
+  }
+  .seg button.active{ background:var(--accent); color:#fff; }
+  .sim-clock{ font-size:12.5px; color:var(--muted); white-space:nowrap; }
+  .sim-clock strong{ color:var(--text); font-variant-numeric:tabular-nums; }
+
+  .icon-btn{
+    border:1px solid var(--border); background:var(--card); color:var(--text);
+    border-radius:999px; width:36px; height:36px; display:flex; align-items:center; justify-content:center;
+    font-size:16px;
+  }
+  .primary-btn{
+    border:none; background:var(--accent); color:#fff; font-weight:600;
+    padding:9px 16px; border-radius:999px; font-size:13.5px;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .ghost-btn{
+    border:1px solid var(--border); background:var(--card); color:var(--text);
+    padding:8px 13px; border-radius:999px; font-size:13px; font-weight:600;
+  }
+  .quiet-btn{
+    border:1px solid var(--border); background:transparent; color:var(--text);
+    padding:6px 11px; border-radius:8px; font-size:12.5px;
+  }
+  .text-btn{
+    border:none; background:transparent; color:var(--accent); font-weight:600; font-size:13px; padding:4px 2px;
+  }
+
+  /* ---------- Layout ---------- */
+  main.layout{
+    max-width:1120px; margin:0 auto; padding:20px;
+    display:grid; grid-template-columns: 380px 1fr; gap:20px; align-items:start;
+  }
+  @media (max-width: 880px){
+    main.layout{ grid-template-columns: 1fr; }
+  }
+  .panel{
+    background:var(--card); border:1px solid var(--border); border-radius:var(--radius-lg);
+    padding:18px;
+  }
+  .panel h2{ margin:0 0 10px 0; font-size:15px; }
+  .focus-panel{ position:sticky; top:78px; }
+  @media (max-width:880px){ .focus-panel{ position:static; } }
+
+  footer.app-footer{
+    max-width:1120px; margin:0 auto; padding:8px 20px calc(40px + var(--safe-bottom)); color:var(--muted-2); font-size:12px;
+  }
+
+  .notice-banner{
+    max-width:1120px; margin:12px auto 0; padding:0 20px;
+  }
+  .notice-banner .inner{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--cat-buffer-tint); border:1px solid var(--border); border-radius:var(--radius-md);
+    padding:10px 14px; font-size:12.5px; color:var(--text);
+  }
+
+  /* ---------- Category chip ---------- */
+  .cat-chip{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:12px; font-weight:600; padding:3px 9px; border-radius:999px;
+    border:1px solid transparent;
+  }
+
+  /* ---------- Pie timer ---------- */
+  .pie-wrap{ position:relative; display:inline-flex; align-items:center; justify-content:center; }
+  .pie-outer{
+    border-radius:50%;
+    background: conic-gradient(var(--pie-color, var(--accent)) 0% var(--frac, 100%), var(--track) var(--frac, 100%) 100%);
+    transition: background 0.25s linear;
+    display:flex; align-items:center; justify-content:center;
+  }
+  @media (prefers-reduced-motion: reduce){
+    .pie-outer{ transition:none; }
+  }
+  .pie-hole{
+    background:var(--card);
+    border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    flex-direction:column;
+  }
+  .pie-label{ font-weight:700; font-variant-numeric:tabular-nums; }
+  .pie.overrun .pie-outer{ box-shadow: 0 0 0 3px var(--danger-quiet) inset; }
+  @media not (prefers-reduced-motion: reduce){
+    .pie.overrun .pie-outer{ animation: gentlePulse 2.4s ease-in-out infinite; }
+  }
+  @keyframes gentlePulse{ 0%,100%{ opacity:1 } 50%{ opacity:.8 } }
+
+  /* ---------- Focus panel content ---------- */
+  .focus-empty{ color:var(--muted); font-size:13.5px; padding:10px 2px; }
+  .focus-empty .next-line{ margin-top:6px; color:var(--text); }
+  .focus-current{ display:flex; flex-direction:column; align-items:center; text-align:center; gap:10px; }
+  .focus-current .big-pie{ margin:6px 0 2px; }
+  .focus-title{ font-size:17px; font-weight:700; margin:0; }
+  .focus-time-range{ font-size:12.5px; color:var(--muted); }
+  .focus-remaining-text{ font-size:13.5px; margin:0; }
+  .focus-actions{ display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:6px; }
+
+  .overrun-banner{
+    width:100%; text-align:left; background:var(--cat-buffer-tint);
+    border:1px solid var(--border); border-radius:var(--radius-md);
+    padding:12px; font-size:13px; margin-top:4px;
+  }
+  .overrun-banner p{ margin:0 0 8px; }
+  .overrun-row{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .overrun-row input[type=number]{ width:56px; padding:5px 6px; border-radius:6px; border:1px solid var(--border); background:var(--card); color:var(--text); }
+
+  .subtask-list{ width:100%; text-align:left; list-style:none; margin:6px 0 0; padding:0; display:flex; flex-direction:column; gap:6px; }
+  .subtask-list li{ display:flex; align-items:center; gap:8px; font-size:13px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background:var(--bg); }
+  .subtask-list li.done{ color:var(--muted); }
+  .subtask-list li.done .subtask-title{ text-decoration: line-through; text-decoration-color:var(--muted-2); }
+  .subtask-list input[type=checkbox]{ width:16px;height:16px; }
+  .subtask-est{ margin-left:auto; color:var(--muted); font-variant-numeric:tabular-nums; }
+
+  .soundtrack-stub{
+    width:100%; margin-top:4px; display:flex; align-items:center; gap:10px;
+    border:1px dashed var(--border); border-radius:var(--radius-md); padding:9px 12px; font-size:12.5px; color:var(--muted);
+  }
+  .soundtrack-stub .play-toggle{
+    width:30px;height:30px;border-radius:50%; border:1px solid var(--border); background:var(--card); color:var(--text); flex:none;
+  }
+  .soundtrack-bar{ flex:1; height:5px; border-radius:999px; background:var(--track); overflow:hidden; }
+  .soundtrack-bar > span{ display:block; height:100%; background:var(--accent); }
+
+  /* ---------- Timeline ---------- */
+  .timeline-toolbar{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; gap:10px; flex-wrap:wrap; }
+  .timeline-list{ display:flex; flex-direction:column; }
+  .tl-gap{ display:flex; align-items:center; justify-content:center; padding:2px 0; }
+  .tl-gap button{
+    font-size:11px; color:var(--muted); background:transparent; border:1px dashed var(--border);
+    border-radius:999px; padding:3px 10px;
+  }
+  .tl-gap button:hover{ color:var(--text); border-color:var(--accent); }
+
+  .block-row{
+    display:flex; gap:12px; align-items:flex-start;
+    background:var(--card); border:1px solid var(--border); border-radius:var(--radius-md);
+    padding:12px 14px; margin:6px 0; border-left-width:6px; border-left-style:solid;
+  }
+  .block-row.is-buffer{
+    background-image: repeating-linear-gradient(135deg, color-mix(in srgb, var(--cat-buffer) 12%, transparent) 0 7px, transparent 7px 14px);
+    border-left-color: var(--cat-buffer);
+  }
+  .block-row.is-current{ box-shadow: 0 0 0 2px var(--accent); }
+  .block-row.is-done{ opacity:.68; }
+  .block-main{ flex:1; min-width:0; }
+  .block-top-line{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .block-title{ font-weight:700; font-size:14px; margin:0; }
+  .block-meta{ font-size:12px; color:var(--muted); margin-top:3px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .status-tag{ font-size:11.5px; font-weight:600; padding:2px 8px; border-radius:999px; border:1px solid var(--border); color:var(--muted); }
+  .status-tag.now{ color:#fff; background:var(--accent); border-color:var(--accent); }
+  .status-tag.over{ color:var(--danger-quiet); border-color:var(--danger-quiet); background:transparent; }
+  .status-tag.wait{ color:var(--muted); border-style:dashed; }
+  .block-actions{ display:flex; gap:6px; align-items:center; flex:none; }
+  .icon-mini{ border:1px solid var(--border); background:transparent; color:var(--muted); width:28px;height:28px; border-radius:7px; font-size:13px; }
+  .icon-mini:hover{ color:var(--text); }
+  .subtask-badge{ font-size:11.5px; color:var(--muted); }
+
+  /* ---------- Dialogs ---------- */
+  dialog{
+    border:none; border-radius:var(--radius-lg); padding:0; width:min(520px, 92vw);
+    background:var(--card); color:var(--text);
+  }
+  dialog::backdrop{ background:rgba(20,18,14,.45); }
+  .dialog-inner{ padding:20px; max-height:82vh; overflow:auto; }
+  .dialog-inner h2{ margin:0 0 4px; font-size:17px; }
+  .dialog-sub{ margin:0 0 16px; font-size:12.5px; color:var(--muted); }
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:12.5px; font-weight:600; margin-bottom:5px; }
+  .field input[type=text], .field input[type=time], .field input[type=number], .field select{
+    width:100%; padding:9px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text); font-size:13.5px;
+  }
+  .field-row{ display:flex; gap:10px; }
+  .field-row .field{ flex:1; }
+  .checkbox-field{ display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:12px; }
+  .checkbox-field input{ width:16px; height:16px; }
+  .nudge-box{
+    background: var(--cat-buffer-tint); border:1px solid var(--border); border-radius:var(--radius-md);
+    padding:11px 12px; font-size:12.5px; margin-bottom:14px;
+  }
+  .nudge-box p{ margin:0 0 8px; }
+  .nudge-actions{ display:flex; gap:8px; }
+  .subtask-editor-row{ display:flex; gap:6px; margin-bottom:6px; align-items:center; }
+  .subtask-editor-row input[type=text]{ flex:1; }
+  .subtask-editor-row input[type=number]{ width:64px; }
+  .dialog-actions{ display:flex; justify-content:space-between; gap:8px; margin-top:18px; }
+  .dialog-actions .right-group{ display:flex; gap:8px; }
+  .color-swatch-input{ width:44px; height:32px; padding:2px; border:1px solid var(--border); border-radius:6px; background:var(--bg); }
+  .cat-manage-row{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .cat-manage-row input[type=text].cname{ flex:1; }
+  .cat-manage-row input[type=text].cicon{ width:44px; text-align:center; }
+
+  /* ---------- Auth screen ---------- */
+  .auth-screen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .auth-card{
+    width:100%; max-width:380px; background:var(--card); border:1px solid var(--border);
+    border-radius:var(--radius-lg); padding:28px;
+  }
+  .auth-card h1{ margin:0 0 4px; font-size:22px; }
+  .auth-card .auth-sub{ margin:0 0 20px; font-size:13px; color:var(--muted); }
+  .auth-tabs{ display:flex; gap:4px; background:var(--bg); border:1px solid var(--border); border-radius:999px; padding:4px; margin-bottom:18px; }
+  .auth-tabs button{ flex:1; border:none; background:transparent; padding:8px; border-radius:999px; font-size:13px; font-weight:600; color:var(--muted); }
+  .auth-tabs button.active{ background:var(--accent); color:#fff; }
+  .auth-error{ font-size:12.5px; color:var(--danger-quiet); margin:0 0 10px; min-height:1em; }
+  .auth-footer-link{ text-align:center; margin-top:14px; font-size:12.5px; color:var(--muted); }
+  .auth-offline-link{ display:block; text-align:center; margin-top:18px; font-size:12px; }
+  .auth-card .primary-btn{ width:100%; justify-content:center; padding:11px; font-size:14px; }
+  .cloud-status{ font-size:11.5px; color:var(--muted); display:flex; align-items:center; gap:5px; }
+  .cloud-status .dot{ width:7px; height:7px; border-radius:50%; background:var(--muted-2); }
+  .cloud-status.synced .dot{ background:#6f9c7d; }
+  .cloud-status.syncing .dot{ background:var(--accent); }
+  .cloud-status.error .dot{ background:var(--danger-quiet); }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">
+    <h1>TimeAnchor</h1>
+    <p>A time-blocking app for time-blindness &middot; saved on this device</p>
+  </div>
+  <div class="header-controls">
+    <div class="sim-clock" id="simClockWrap" title="Speed and other testing tools are in Settings"><strong id="simClockText">--:--</strong></div>
+    <button type="button" class="icon-btn" id="speakNowBtn" aria-label="Speak the time and current plan" title="Speak the time and current plan" style="display:none;">🔊</button>
+    <span class="cloud-status" id="cloudStatus" style="display:none;"><span class="dot"></span><span id="cloudStatusText">Local only</span></span>
+    <button type="button" class="icon-btn" id="signOutBtn" aria-label="Sign out" title="Sign out" style="display:none;">↩️</button>
+    <button type="button" class="icon-btn" id="settingsBtn" aria-label="Settings: categories, sound, and more" title="Settings">⚙️</button>
+    <button type="button" class="primary-btn" data-action="new-block">+ New block</button>
+  </div>
+</header>
+
+<div class="notice-banner" id="noticeBanner" style="display:none;">
+  <div class="inner">
+    <span id="noticeText"></span>
+    <span style="display:flex; gap:6px; flex:none;">
+      <button type="button" class="text-btn" id="noticeUndo" style="display:none;">Undo</button>
+      <button type="button" class="text-btn" id="noticeDismiss">Dismiss</button>
+    </span>
+  </div>
+</div>
+
+<div class="auth-screen" id="authScreen" style="display:none;">
+  <div class="auth-card">
+    <h1>TimeAnchor</h1>
+    <p class="auth-sub">Sign in to keep your timeline synced across devices.</p>
+    <div class="auth-tabs" role="tablist">
+      <button type="button" role="tab" id="authTabLogin" class="active" aria-selected="true">Log in</button>
+      <button type="button" role="tab" id="authTabSignup" aria-selected="false">Sign up</button>
+    </div>
+    <p class="auth-error" id="authError" role="alert"></p>
+    <form id="authForm">
+      <div class="field"><label for="authEmail">Email</label><input type="email" id="authEmail" autocomplete="email" required></div>
+      <div class="field"><label for="authPassword">Password</label><input type="password" id="authPassword" autocomplete="current-password" required minlength="6"></div>
+      <button type="submit" class="primary-btn" id="authSubmit">Log in</button>
+    </form>
+    <a href="#" class="auth-offline-link text-btn" id="authOfflineLink">Continue without an account (this device only)</a>
+  </div>
+</div>
+
+<main class="layout" id="mainApp" style="display:none;">
+  <section class="panel focus-panel" aria-labelledby="focusHeading">
+    <h2 id="focusHeading">Right now</h2>
+    <div id="focusPanelBody"></div>
+  </section>
+
+  <section class="panel" aria-labelledby="timelineHeading">
+    <div class="timeline-toolbar">
+      <h2 id="timelineHeading" style="margin:0;">Today's timeline</h2>
+    </div>
+    <div class="timeline-list" id="timelineList"></div>
+  </section>
+</main>
+
+<footer class="app-footer" id="mainFooter" style="display:none;">
+  <span id="footerStorageNote">Your schedule is saved on this device only (no account, no cloud sync).</span>
+  The speed control is a testing aid that fast-forwards the on-screen clock — it never changes the real reminder times.
+</footer>
+
+<div id="ariaLive" class="visually-hidden" aria-live="polite"></div>
+
+<dialog id="blockDialog" aria-labelledby="blockDialogTitle">
+  <div class="dialog-inner" id="blockDialogInner"></div>
+</dialog>
+
+<dialog id="settingsDialog" aria-labelledby="settingsDialogTitle">
+  <div class="dialog-inner" id="settingsDialogInner"></div>
+</dialog>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------------------------------------------------------------
+     Utilities
+  --------------------------------------------------------------------- */
+  let uidCounter = 1;
+  function uid(prefix){ return prefix + "_" + (uidCounter++) + "_" + Math.random().toString(36).slice(2,7); }
+
+  function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+  function fmtClock(mFloat){
+    let m = ((mFloat % 1440) + 1440) % 1440;
+    let h = Math.floor(m / 60);
+    let mm = Math.floor(m % 60);
+    let ampm = h < 12 ? "AM" : "PM";
+    let h12 = h % 12; if (h12 === 0) h12 = 12;
+    return h12 + ":" + String(mm).padStart(2, "0") + " " + ampm;
+  }
+  function fmtClock24(mFloat){
+    let m = ((Math.round(mFloat) % 1440) + 1440) % 1440;
+    let h = Math.floor(m / 60), mm = m % 60;
+    return String(h).padStart(2,"0") + ":" + String(mm).padStart(2,"0");
+  }
+  function parseTime24(str){
+    const parts = (str || "00:00").split(":");
+    return (parseInt(parts[0],10) || 0) * 60 + (parseInt(parts[1],10) || 0);
+  }
+  function fmtDuration(min){
+    min = Math.round(min);
+    if (min < 60) return min + "m";
+    const h = Math.floor(min/60), r = min % 60;
+    return r ? (h + "h " + r + "m") : (h + "h");
+  }
+  function todayStr(){
+    const d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  }
+  function actualNowMinutes(){
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes() + d.getSeconds()/60;
+  }
+
+  const BUFFER_META = { name: "Buffer", color: "#9aa0a1", icon: "⏳" };
+  const STORAGE_KEY = "timeanchor_state_v1";
+
+  /* ---------------------------------------------------------------------
+     Cloud accounts (optional). Leave these two as placeholders to run
+     fully local-only — nothing else in the app requires them. Fill them
+     in with a Supabase project's URL + anon/public key (never the
+     service_role key) to turn on sign-in and cross-device sync.
+  --------------------------------------------------------------------- */
+  const SUPABASE_URL = "REPLACE_WITH_YOUR_SUPABASE_URL";
+  const SUPABASE_ANON_KEY = "REPLACE_WITH_YOUR_SUPABASE_ANON_KEY";
+  const cloudEnabled = /^https:\/\/.+\.supabase\.co\/?$/.test(SUPABASE_URL) && SUPABASE_ANON_KEY.length > 20;
+  const sb = (cloudEnabled && window.supabase) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+  let currentUser = null;
+  let offlineMode = false;
+  let appBooted = false;
+
+  /* ---------------------------------------------------------------------
+     Default day template (used on first run, and to seed any newly
+     added days — the schedule itself repeats daily until edited)
+  --------------------------------------------------------------------- */
+  function defaultCategories(){
+    return [
+      { id: "work",     name: "Work",     color: "#5b7fa6", icon: "💼", defaultMinutes: 45 },
+      { id: "admin",    name: "Admin",    color: "#ab8657", icon: "🗂️", defaultMinutes: 20 },
+      { id: "rest",     name: "Rest",     color: "#6f9c7d", icon: "🌿", defaultMinutes: 20 },
+      { id: "personal", name: "Personal", color: "#9a7bb0", icon: "🌸", defaultMinutes: 30 }
+    ];
+  }
+  function defaultBlocks(){
+    return [
+      mkBlock("Deep Work", "work", 540, 45, false, [], false),
+      mkBuffer(585, 10),
+      mkBlock("Write project report", "work", 595, 60, false, [
+        { id: uid("st"), title: "Outline", est: 15, done: false },
+        { id: uid("st"), title: "Draft intro", est: 20, done: false },
+        { id: uid("st"), title: "Draft body", est: 15, done: false },
+        { id: uid("st"), title: "Review & send", est: 10, done: false }
+      ], false),
+      mkBuffer(655, 10),
+      mkBlock("Email & admin", "admin", 665, 30, false, [], false),
+      mkBuffer(695, 10),
+      mkBlock("Call with Mia", "personal", 705, 30, false, [], false),
+      mkBlock("Lunch", "rest", 735, 45, false, [], false),
+      mkBuffer(780, 10),
+      mkBlock("Focus sprint", "work", 790, 60, false, [], true),
+      mkBuffer(850, 10),
+      mkBlock("Admin catch-up", "admin", 860, 30, false, [], false),
+      mkBlock("Afternoon walk", "rest", 890, 40, false, [], false)
+    ];
+  }
+
+  function mkBlock(title, categoryId, start, duration, isBuffer, subtasks, soundtrackEnabled){
+    return {
+      id: uid("blk"), title, categoryId, start, duration,
+      isBuffer: !!isBuffer, subtasks: subtasks || [],
+      soundtrackEnabled: !!soundtrackEnabled, status: "pending"
+    };
+  }
+  function mkBuffer(start, duration){
+    return mkBlock("Buffer", null, start, duration, true, [], false);
+  }
+
+  /* ---------------------------------------------------------------------
+     Persistence (device-local only — this is a real installed app now,
+     so we save with the platform's storage instead of staying in-memory)
+  --------------------------------------------------------------------- */
+  function loadPersisted(){
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.blocks) || !Array.isArray(parsed.categories)) return null;
+      return parsed;
+    } catch (e) { return null; }
+  }
+  function persist(){
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        nudgeThreshold: state.nudgeThreshold,
+        categories: state.categories,
+        blocks: state.blocks,
+        savedForDate: state.savedForDate,
+        soundEnabled: state.soundEnabled,
+        soundVolume: state.soundVolume,
+        speakEnabled: state.speakEnabled
+      }));
+    } catch (e) { /* storage unavailable — app still works for this session */ }
+  }
+
+  /* ---------------------------------------------------------------------
+     State
+  --------------------------------------------------------------------- */
+  const persisted = loadPersisted();
+  const state = persisted ? {
+    nudgeThreshold: persisted.nudgeThreshold || 45,
+    categories: persisted.categories,
+    blocks: persisted.blocks,
+    savedForDate: persisted.savedForDate || todayStr(),
+    soundEnabled: persisted.soundEnabled !== false,
+    soundVolume: typeof persisted.soundVolume === "number" ? persisted.soundVolume : 0.6,
+    speakEnabled: persisted.speakEnabled === true,
+    demoOffset: 0,
+    speed: 1
+  } : {
+    nudgeThreshold: 45,
+    categories: defaultCategories(),
+    blocks: defaultBlocks(),
+    savedForDate: todayStr(),
+    soundEnabled: true,
+    soundVolume: 0.6,
+    speakEnabled: false,
+    demoOffset: 0,
+    speed: 1
+  };
+
+  // New day: the schedule is a repeating daily template — carry the same
+  // blocks forward but clear yesterday's "done" marks.
+  if (state.savedForDate !== todayStr()){
+    state.blocks.forEach(b => { b.status = "pending"; });
+    state.savedForDate = todayStr();
+    persist();
+  }
+
+  function catFor(block){
+    if (block.isBuffer || !block.categoryId) return BUFFER_META;
+    return state.categories.find(c => c.id === block.categoryId) || BUFFER_META;
+  }
+  function sortedBlocks(){ return [...state.blocks].sort((a,b) => a.start - b.start); }
+
+  function getCurrentBlock(){
+    for (const b of sortedBlocks()){
+      if (b.status === "pending" && state.simNow >= b.start) return b;
+    }
+    return null;
+  }
+  function getNextUpcoming(){
+    const cur = getCurrentBlock();
+    const list = sortedBlocks();
+    if (cur){
+      const idx = list.findIndex(b => b.id === cur.id);
+      for (let i = idx+1; i < list.length; i++) if (list[i].status === "pending") return list[i];
+      return null;
+    }
+    for (const b of list) if (b.status === "pending") return b;
+    return null;
+  }
+
+  function shiftBlocksFrom(pointMinutes, deltaMinutes, excludeIds){
+    excludeIds = excludeIds || new Set();
+    state.blocks.forEach(b => {
+      if (!excludeIds.has(b.id) && b.start >= pointMinutes) b.start += deltaMinutes;
+    });
+  }
+
+  /* ---------------------------------------------------------------------
+     Local notifications — real reminders that fire even if the app is
+     backgrounded or closed (native only; best-effort in a plain browser
+     tab). These always track the REAL schedule, never the demo speed.
+  --------------------------------------------------------------------- */
+  const hasCapacitor = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  const LocalNotifications = hasCapacitor && window.Capacitor.Plugins ? window.Capacitor.Plugins.LocalNotifications : null;
+  let notifPermission = "unknown";
+
+  async function initNotifications(){
+    if (LocalNotifications){
+      try {
+        const perm = await LocalNotifications.checkPermissions();
+        if (perm.display !== "granted"){
+          const req = await LocalNotifications.requestPermissions();
+          notifPermission = req.display;
+        } else {
+          notifPermission = "granted";
+        }
+      } catch (e) { notifPermission = "unavailable"; }
+    } else if (typeof Notification !== "undefined") {
+      try {
+        notifPermission = Notification.permission === "default" ? (await Notification.requestPermission()) : Notification.permission;
+      } catch (e) { notifPermission = "unavailable"; }
+    } else {
+      notifPermission = "unavailable";
+    }
+    if (notifPermission !== "granted"){
+      showNotice("Reminders are off — allow notifications in your device settings if you'd like TimeAnchor to alert you when blocks start and end.");
+    }
+    scheduleNotifications();
+  }
+
+  function minutesToRealDate(minutesSinceMidnight){
+    const now = new Date();
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    d.setMinutes(minutesSinceMidnight);
+    if (d.getTime() <= now.getTime()) return null; // already passed today — don't schedule
+    return d;
+  }
+
+  let notifIdCounter = 1;
+  async function scheduleNotifications(){
+    if (!LocalNotifications || notifPermission !== "granted") return;
+    try {
+      const pending = await LocalNotifications.getPending();
+      if (pending && pending.notifications && pending.notifications.length){
+        await LocalNotifications.cancel({ notifications: pending.notifications.map(n => ({ id: n.id })) });
+      }
+      const toSchedule = [];
+      sortedBlocks().forEach(b => {
+        if (b.status === "done") return;
+        const cat = catFor(b);
+        const startDate = minutesToRealDate(b.start);
+        if (startDate) toSchedule.push({
+          id: notifIdCounter++, title: "Starting now", body: b.title + " (" + cat.name + ")", schedule: { at: startDate }
+        });
+        if (b.duration >= 10){
+          const soonDate = minutesToRealDate(b.start + b.duration - 5);
+          if (soonDate) toSchedule.push({
+            id: notifIdCounter++, title: b.title, body: "Ends in 5 minutes", schedule: { at: soonDate }
+          });
+        }
+        const endDate = minutesToRealDate(b.start + b.duration);
+        if (endDate) toSchedule.push({
+          id: notifIdCounter++, title: b.title, body: "Time's up — check in on TimeAnchor", schedule: { at: endDate }
+        });
+      });
+      if (toSchedule.length) await LocalNotifications.schedule({ notifications: toSchedule });
+    } catch (e) { /* scheduling is best-effort */ }
+  }
+
+  // Browser-tab fallback: only useful while this tab stays open, since a
+  // plain web page can't wake itself up the way a native app can.
+  const webNotifiedKeys = new Set();
+  function checkWebNotifyFallback(){
+    if (LocalNotifications || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    if (document.visibilityState !== "hidden") return;
+    sortedBlocks().forEach(b => {
+      if (b.status === "done") return;
+      const startKey = b.id + ":start";
+      const endKey = b.id + ":end";
+      if (!webNotifiedKeys.has(startKey) && state.simNow >= b.start && state.simNow < b.start + 1){
+        webNotifiedKeys.add(startKey);
+        new Notification("Starting now", { body: b.title, tag: startKey });
+      }
+      if (!webNotifiedKeys.has(endKey) && state.simNow >= b.start + b.duration && state.simNow < b.start + b.duration + 1){
+        webNotifiedKeys.add(endKey);
+        new Notification(b.title, { body: "Time's up", tag: endKey });
+      }
+    });
+  }
+
+  function showNotice(text, undoFn){
+    document.getElementById("noticeText").textContent = text;
+    document.getElementById("noticeBanner").style.display = "";
+    const undoBtn = document.getElementById("noticeUndo");
+    if (undoFn){
+      undoBtn.style.display = "";
+      undoBtn.onclick = () => { undoFn(); document.getElementById("noticeBanner").style.display = "none"; };
+    } else {
+      undoBtn.style.display = "none";
+      undoBtn.onclick = null;
+    }
+  }
+  document.getElementById("noticeDismiss").addEventListener("click", () => {
+    document.getElementById("noticeBanner").style.display = "none";
+  });
+
+  /* ---------------------------------------------------------------------
+     Low-capacity ("bed rot") day. Autistic burnout / spoon-theory guidance
+     treats a demand-free rest day as a legitimate recovery need, not a
+     failure — so this clears today's remaining plan with validating
+     copy, no streak-breaking, no "missed" language, and a one-tap undo.
+  --------------------------------------------------------------------- */
+  function hasClearableBlocksToday(){
+    return state.blocks.some(b => b.status === "pending");
+  }
+  function clearLowCapacityDay(){
+    if (!confirm("Clear the rest of today's plan? Nothing is lost — your schedule comes back fresh tomorrow.")) return;
+    const clearedIds = [];
+    state.blocks.forEach(b => { if (b.status === "pending"){ clearedIds.push(b.id); b.status = "skipped"; } });
+    commit();
+    showNotice("Today's plan is cleared — no pressure. Tomorrow starts fresh.", () => {
+      state.blocks.forEach(b => { if (clearedIds.includes(b.id)) b.status = "pending"; });
+      commit();
+    });
+  }
+
+  /* ---------------------------------------------------------------------
+     Rendering: Pie timer
+  --------------------------------------------------------------------- */
+  function pieMarkup(fraction, colorHex, sizePx, holeRatio, holeLabel, overrun, idAttr){
+    const pct = clamp(fraction, 0, 1) * 100;
+    const holeSize = Math.round(sizePx * holeRatio);
+    const idBit = idAttr ? ' id="' + idAttr + '"' : "";
+    return (
+      '<div class="pie-wrap pie' + (overrun ? ' overrun' : '') + '"' + idBit + ' style="width:' + sizePx + 'px;height:' + sizePx + 'px;">' +
+        '<div class="pie-outer" style="width:' + sizePx + 'px;height:' + sizePx + 'px;--frac:' + pct.toFixed(2) + '%;--pie-color:' + colorHex + ';">' +
+          '<div class="pie-hole" style="width:' + holeSize + 'px;height:' + holeSize + 'px;">' +
+            (holeLabel ? '<span class="pie-label" style="font-size:' + Math.round(sizePx*0.14) + 'px;">' + holeLabel + '</span>' : '') +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function timeInfo(block){
+    const end = block.start + block.duration;
+    const remaining = end - state.simNow;
+    const fraction = clamp(remaining / block.duration, 0, 1);
+    const overrun = remaining <= 0;
+    return { end, remaining, fraction, overrun };
+  }
+
+  /* ---------------------------------------------------------------------
+     Rendering: Focus panel
+  --------------------------------------------------------------------- */
+  function renderFocusPanel(){
+    const el = document.getElementById("focusPanelBody");
+    const cur = getCurrentBlock();
+
+    if (!cur){
+      const next = getNextUpcoming();
+      if (next){
+        const cat = catFor(next);
+        el.innerHTML =
+          '<div class="focus-empty">' +
+            '<p>Nothing scheduled right now &mdash; this is open time.</p>' +
+            '<p class="next-line">Next up: <strong>' + escapeHtml(next.title) + '</strong> (' + cat.icon + ' ' + escapeHtml(cat.name) + ') at ' + fmtClock(next.start) + '.</p>' +
+            '<div class="focus-actions"><button type="button" class="ghost-btn" data-action="start-now" data-id="' + next.id + '">Start it now</button></div>' +
+          '</div>' + lowCapacityLinkHtml();
+      } else {
+        el.innerHTML = '<div class="focus-empty"><p>Nothing else is scheduled for today.</p></div>' + lowCapacityLinkHtml();
+      }
+      updateAriaLive("Nothing is currently active.");
+      return;
+    }
+
+    const cat = catFor(cur);
+    const { remaining, fraction, overrun } = timeInfo(cur);
+    const holeLabel = overrun ? "Time's up" : (Math.ceil(remaining) + "m");
+    const pie = pieMarkup(fraction, cat.color, 190, 0.62, holeLabel, overrun, "focusPie");
+
+    let subtasksHtml = "";
+    if (!cur.isBuffer && cur.subtasks && cur.subtasks.length){
+      subtasksHtml = '<ul class="subtask-list">' + cur.subtasks.map(st =>
+        '<li class="' + (st.done ? "done" : "") + '">' +
+          '<input type="checkbox" id="sub_' + st.id + '" data-action="toggle-subtask" data-block="' + cur.id + '" data-sub="' + st.id + '" ' + (st.done ? "checked" : "") + ' aria-label="Mark step \'' + escapeAttr(st.title) + '\' done">' +
+          '<label class="subtask-title" for="sub_' + st.id + '">' + escapeHtml(st.title) + '</label>' +
+          '<span class="subtask-est">' + st.est + 'm</span>' +
+        '</li>'
+      ).join("") + '</ul>';
+    }
+
+    let soundtrackHtml = "";
+    if (!cur.isBuffer && cur.soundtrackEnabled){
+      const played = clamp(1 - fraction, 0, 1) * 100;
+      soundtrackHtml =
+        '<div class="soundtrack-stub">' +
+          '<button type="button" class="play-toggle" data-action="toggle-play" aria-label="' + (cur._playing ? "Pause" : "Play") + ' placeholder soundtrack">' + (cur._playing ? "⏸" : "▶") + '</button>' +
+          '<div>' +
+            '<div>' + escapeHtml(cat.name) + ' mix &middot; ' + fmtDuration(cur.duration) + ' (prototype stub, no audio)</div>' +
+            '<div class="soundtrack-bar"><span style="width:' + played.toFixed(1) + '%;"></span></div>' +
+          '</div>' +
+        '</div>';
+    }
+
+    let overrunHtml = "";
+    if (overrun){
+      const suggested = Math.max(5, Math.ceil(Math.abs(remaining)/5)*5);
+      overrunHtml =
+        '<div class="overrun-banner">' +
+          '<p>This block ran over by about ' + Math.ceil(Math.abs(remaining)) + ' minutes. You can extend it, or push the rest of today later so the schedule matches reality.</p>' +
+          '<div class="overrun-row">' +
+            '<button type="button" class="quiet-btn" data-action="reflow" data-id="' + cur.id + '" data-min="5">Reflow +5m</button>' +
+            '<button type="button" class="quiet-btn" data-action="reflow" data-id="' + cur.id + '" data-min="10">Reflow +10m</button>' +
+            '<button type="button" class="quiet-btn" data-action="reflow" data-id="' + cur.id + '" data-min="' + suggested + '">Reflow +' + suggested + 'm (match overrun)</button>' +
+          '</div>' +
+        '</div>';
+    }
+
+    el.innerHTML =
+      '<div class="focus-current">' +
+        '<span class="cat-chip" style="color:' + cat.color + '; background:color-mix(in srgb, ' + cat.color + ' 16%, transparent); border-color:' + cat.color + ';">' + cat.icon + ' ' + escapeHtml(cat.name) + '</span>' +
+        '<div class="big-pie">' + pie + '</div>' +
+        '<p class="focus-title">' + escapeHtml(cur.title) + '</p>' +
+        '<p class="focus-time-range">' + fmtClock(cur.start) + '&ndash;' + fmtClock(cur.start + cur.duration) + ' &middot; ' + fmtDuration(cur.duration) + (overrun ? " (running over)" : "") + '</p>' +
+        '<p class="focus-remaining-text" id="focusRemainingText">' + remainingSentence(cur, remaining, overrun) + '</p>' +
+        subtasksHtml +
+        soundtrackHtml +
+        overrunHtml +
+        '<div class="focus-actions">' +
+          '<button type="button" class="ghost-btn" data-action="extend" data-id="' + cur.id + '" data-min="5">+5m</button>' +
+          '<button type="button" class="ghost-btn" data-action="extend" data-id="' + cur.id + '" data-min="10">+10m</button>' +
+          '<button type="button" class="primary-btn" data-action="done" data-id="' + cur.id + '">Mark done</button>' +
+        '</div>' +
+      '</div>' + lowCapacityLinkHtml();
+  }
+
+  function lowCapacityLinkHtml(){
+    if (!hasClearableBlocksToday()) return "";
+    return '<a href="#" class="auth-offline-link text-btn" data-action="low-capacity-day" style="margin-top:14px;">Low-capacity day? Clear the rest of today</a>';
+  }
+
+  function remainingSentence(block, remaining, overrun){
+    if (overrun) return block.title + ": time is up. Extend it or reflow the rest of today.";
+    return Math.ceil(remaining) + " minute" + (Math.ceil(remaining) === 1 ? "" : "s") + " remaining on " + block.title + ".";
+  }
+
+  let lastAnnounced = "";
+  function updateAriaLive(text){
+    if (text === lastAnnounced) return;
+    lastAnnounced = text;
+    document.getElementById("ariaLive").textContent = text;
+  }
+
+  /* ---------------------------------------------------------------------
+     Rendering: Timeline
+  --------------------------------------------------------------------- */
+  function statusFor(block, curId){
+    if (block.status === "done") return { label: "Completed", cls: "" };
+    if (block.status === "skipped") return { label: "Skipped today", cls: "wait" };
+    if (block.id === curId){
+      const { overrun } = timeInfo(block);
+      return overrun ? { label: "Running over", cls: "over" } : { label: "In progress", cls: "now" };
+    }
+    if (block.start > state.simNow) return { label: "Upcoming", cls: "" };
+    return { label: "Waiting — running behind", cls: "wait" };
+  }
+
+  function renderTimeline(){
+    const list = sortedBlocks();
+    const cur = getCurrentBlock();
+    const curId = cur ? cur.id : null;
+    const el = document.getElementById("timelineList");
+
+    let html = "";
+    list.forEach((block) => {
+      const cat = catFor(block);
+      const st = statusFor(block, curId);
+      const isCurrent = block.id === curId;
+      let miniTimer = "";
+      if (isCurrent){
+        const { fraction, overrun } = timeInfo(block);
+        miniTimer = pieMarkup(fraction, cat.color, 40, 0.5, "", overrun, null);
+      }
+      let subtaskBadge = "";
+      if (!block.isBuffer && block.subtasks && block.subtasks.length){
+        const done = block.subtasks.filter(s => s.done).length;
+        subtaskBadge = '<span class="subtask-badge">' + done + '/' + block.subtasks.length + ' steps</span>';
+      }
+
+      html +=
+        '<div class="block-row' + (block.isBuffer ? " is-buffer" : "") + (isCurrent ? " is-current" : "") + ((block.status === "done" || block.status === "skipped") ? " is-done" : "") + '" style="border-left-color:' + cat.color + ';">' +
+          (miniTimer ? miniTimer : "") +
+          '<div class="block-main">' +
+            '<div class="block-top-line">' +
+              '<span class="cat-chip" style="color:' + cat.color + '; background:color-mix(in srgb, ' + cat.color + ' 16%, transparent); border-color:' + cat.color + ';">' + cat.icon + ' ' + escapeHtml(cat.name) + '</span>' +
+              '<p class="block-title">' + escapeHtml(block.title) + '</p>' +
+            '</div>' +
+            '<div class="block-meta">' +
+              '<span>' + fmtClock(block.start) + '&ndash;' + fmtClock(block.start + block.duration) + ' &middot; ' + fmtDuration(block.duration) + '</span>' +
+              '<span class="status-tag ' + st.cls + '">' + st.label + '</span>' +
+              subtaskBadge +
+            '</div>' +
+          '</div>' +
+          '<div class="block-actions">' +
+            '<button type="button" class="icon-mini" data-action="edit" data-id="' + block.id + '" aria-label="Edit ' + escapeAttr(block.title) + '">✏️</button>' +
+            '<button type="button" class="icon-mini" data-action="delete" data-id="' + block.id + '" aria-label="Delete ' + escapeAttr(block.title) + '">🗑️</button>' +
+          '</div>' +
+        '</div>';
+
+      html += '<div class="tl-gap"><button type="button" data-action="insert-buffer" data-after="' + block.id + '">+ insert 5-min buffer</button></div>';
+    });
+
+    el.innerHTML = html || '<p style="color:var(--muted);font-size:13px;">No blocks yet. Use "+ New block" to add one.</p>';
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+  function escapeAttr(s){ return escapeHtml(s); }
+
+  /* ---------------------------------------------------------------------
+     Full render + tick loop
+  --------------------------------------------------------------------- */
+  function render(){
+    renderFocusPanel();
+    renderTimeline();
+  }
+
+  // Structural changes (add/edit/delete/reflow/etc) need to be saved and
+  // re-scheduled — plain ticking does not.
+  let cloudSaveTimer = null;
+  function commit(){
+    persist();
+    scheduleNotifications();
+    render();
+    if (cloudEnabled && currentUser && !offlineMode){
+      setCloudStatus("syncing", "Saving…");
+      clearTimeout(cloudSaveTimer);
+      cloudSaveTimer = setTimeout(saveCloudState, 700);
+    }
+  }
+
+  function updateSimClock(){
+    document.getElementById("simClockText").textContent = fmtClock(state.simNow);
+    document.querySelectorAll("#speedSeg button").forEach(b => {
+      b.classList.toggle("active", parseInt(b.dataset.speed,10) === state.speed);
+    });
+  }
+
+  /* ---------------------------------------------------------------------
+     Alarm chime — a soft two-note tone when a block actually starts, not
+     a jarring digital beep. Sound sensitivity is common in autistic
+     adults (sudden/high-pitched noise is a frequent trigger), so this is
+     deliberately gentle (fades in, low peak volume even at max), on by
+     default, and trivially muted from Settings — the shrinking timer
+     still communicates state with sound off.
+  --------------------------------------------------------------------- */
+  let audioCtx = null;
+  function unlockAudioOnce(){
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+    } catch (e) { /* Web Audio unavailable — silent, no functional loss */ }
+  }
+  document.addEventListener("click", unlockAudioOnce, { once: true });
+  document.addEventListener("touchstart", unlockAudioOnce, { once: true });
+
+  function playAlarmChime(){
+    if (!state.soundEnabled) return;
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      const now = audioCtx.currentTime;
+      [523.25, 659.25].forEach((freq, i) => { // soft two-note rise (C5 → E5)
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        const start = now + i * 0.18;
+        const peak = clamp(state.soundVolume, 0, 1) * 0.35; // gentle even at "full" volume
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(peak, start + 0.08); // fade in — no sudden onset
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.5);
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start(start);
+        osc.stop(start + 0.55);
+      });
+    } catch (e) { /* the visual timer still communicates state without sound */ }
+  }
+
+  /* ---------------------------------------------------------------------
+     Spoken time + plan — a second, optional channel alongside the chime,
+     for when even glancing at the screen is more than someone wants to
+     do right then. Reuses the same info already shown in the focus panel.
+  --------------------------------------------------------------------- */
+  const speechSupported = "speechSynthesis" in window;
+
+  function buildSpokenStatus(){
+    const clockPart = "It's " + fmtClock(state.simNow) + ".";
+    const cur = getCurrentBlock();
+    if (cur){
+      const { remaining, overrun } = timeInfo(cur);
+      return clockPart + " " + (overrun
+        ? cur.title + ", time is up."
+        : "You're in " + cur.title + ", " + Math.ceil(remaining) + " minute" + (Math.ceil(remaining) === 1 ? "" : "s") + " left.");
+    }
+    const next = getNextUpcoming();
+    return clockPart + " " + (next ? "Next up: " + next.title + " at " + fmtClock(next.start) + "." : "Nothing else scheduled today.");
+  }
+
+  function speakNow(){
+    if (!("speechSynthesis" in window)) return;
+    try {
+      window.speechSynthesis.cancel(); // avoid overlapping utterances if triggered repeatedly
+      const u = new SpeechSynthesisUtterance(buildSpokenStatus());
+      u.rate = 0.95;
+      u.volume = clamp(state.soundVolume, 0, 1); // reuses the existing volume setting rather than adding a second one
+      window.speechSynthesis.speak(u);
+    } catch (e) { /* the visual timer and aria-live text still communicate status */ }
+  }
+
+  let lastCurrentBlockId; // undefined until first tick after boot (no chime for a block already in progress at launch)
+  let lastTickMs = performance.now();
+  function tick(){
+    if (!appBooted) return;
+    const now = performance.now();
+    const deltaSec = (now - lastTickMs) / 1000;
+    lastTickMs = now;
+    const deltaMin = deltaSec / 60;
+    // At 1x this is always real wall-clock time. Faster speeds only pile up
+    // a temporary on-screen offset for testing — they never touch what's
+    // actually scheduled or when real reminders fire.
+    if (state.speed !== 1) state.demoOffset += deltaMin * (state.speed - 1);
+    state.simNow = actualNowMinutes() + state.demoOffset;
+    if (state.simNow >= 1440) { state.simNow -= 1440; }
+    updateSimClock();
+    render();
+    checkWebNotifyFallback();
+
+    const nowCurrent = getCurrentBlock();
+    const nowCurrentId = nowCurrent ? nowCurrent.id : null;
+    if (lastCurrentBlockId !== undefined && nowCurrentId && nowCurrentId !== lastCurrentBlockId){
+      playAlarmChime();
+      if (state.speakEnabled) setTimeout(speakNow, 650); // let the chime finish first
+    }
+    lastCurrentBlockId = nowCurrentId;
+
+    const today = todayStr();
+    if (today !== state.savedForDate){
+      state.blocks.forEach(b => { b.status = "pending"; });
+      state.savedForDate = today;
+      webNotifiedKeys.clear();
+      commit();
+    }
+  }
+  setInterval(tick, 200);
+
+  /* ---------------------------------------------------------------------
+     Actions (event delegation)
+  --------------------------------------------------------------------- */
+  document.addEventListener("click", function(e){
+    const t = e.target.closest("[data-action]");
+    if (!t) return;
+    const action = t.dataset.action;
+
+    if (action === "speed"){
+      state.speed = parseInt(t.dataset.speed, 10);
+      updateSimClock();
+      return;
+    }
+    if (action === "new-block"){ openBlockForm(null); return; }
+    if (action === "edit"){
+      const b = state.blocks.find(x => x.id === t.dataset.id);
+      if (b) openBlockForm(b);
+      return;
+    }
+    if (action === "delete"){
+      const b = state.blocks.find(x => x.id === t.dataset.id);
+      if (b && confirm('Delete "' + b.title + '"? This can\'t be undone.')){
+        state.blocks = state.blocks.filter(x => x.id !== b.id);
+        commit();
+      }
+      return;
+    }
+    if (action === "insert-buffer"){
+      insertBufferAfter(t.dataset.after);
+      return;
+    }
+    if (action === "done"){
+      const b = state.blocks.find(x => x.id === t.dataset.id);
+      if (b) { b.status = "done"; commit(); }
+      return;
+    }
+    if (action === "extend"){
+      const b = state.blocks.find(x => x.id === t.dataset.id);
+      const min = parseInt(t.dataset.min, 10) || 5;
+      if (b) { b.duration += min; commit(); }
+      return;
+    }
+    if (action === "reflow"){
+      const b = state.blocks.find(x => x.id === t.dataset.id);
+      const min = parseInt(t.dataset.min, 10) || 5;
+      if (b) { reflowAfter(b, min); commit(); }
+      return;
+    }
+    if (action === "start-now"){
+      const b = state.blocks.find(x => x.id === t.dataset.id);
+      if (b){
+        const oldStart = b.start;
+        const newStart = Math.round(state.simNow);
+        const delta = newStart - oldStart;
+        if (delta !== 0){
+          state.blocks.forEach(other => { if (other.id !== b.id && other.start > oldStart) other.start += delta; });
+          b.start = newStart;
+        }
+        commit();
+      }
+      return;
+    }
+    if (action === "toggle-play"){
+      const cur = getCurrentBlock();
+      if (cur) { cur._playing = !cur._playing; render(); }
+      return;
+    }
+    if (action === "low-capacity-day"){
+      e.preventDefault();
+      clearLowCapacityDay();
+      return;
+    }
+  });
+
+  document.addEventListener("change", function(e){
+    const t = e.target.closest("[data-action='toggle-subtask']");
+    if (!t) return;
+    const b = state.blocks.find(x => x.id === t.dataset.block);
+    if (!b) return;
+    const st = (b.subtasks || []).find(s => s.id === t.dataset.sub);
+    if (st) { st.done = t.checked; commit(); }
+  });
+
+  function insertBufferAfter(afterId){
+    const after = state.blocks.find(b => b.id === afterId);
+    if (!after) return;
+    const point = after.start + after.duration;
+    const buf = mkBuffer(point, 5);
+    state.blocks.push(buf);
+    shiftBlocksFrom(point, 5, new Set([buf.id]));
+    commit();
+  }
+
+  // Pushes every block scheduled after `block`'s planned end forward by `minutes`,
+  // so the rest of the day reflects an overrun instead of silently going stale.
+  function reflowAfter(block, minutes){
+    const point = block.start + block.duration;
+    shiftBlocksFrom(point, minutes, new Set());
+  }
+
+  /* ---------------------------------------------------------------------
+     Block Add/Edit dialog
+  --------------------------------------------------------------------- */
+  const blockDialog = document.getElementById("blockDialog");
+  let formSubtasks = [];
+  let formDismissedNudge = false;
+  let formEditingId = null;
+  let formIsBuffer = false;
+
+  function suggestedNewStart(){
+    const list = sortedBlocks();
+    if (!list.length) return Math.round(state.simNow / 5) * 5;
+    const last = list[list.length - 1];
+    return last.start + last.duration;
+  }
+
+  let formCategoryId = null;
+  let formMoreOpen = false;
+
+  function openBlockForm(block){
+    formEditingId = block ? block.id : null;
+    formIsBuffer = block ? block.isBuffer : false;
+    formSubtasks = block && block.subtasks ? block.subtasks.map(s => ({...s})) : [];
+    formCategoryId = block ? block.categoryId : (state.categories[0] ? state.categories[0].id : null);
+    formDismissedNudge = false;
+    formMoreOpen = false;
+    renderBlockDialog(block);
+    blockDialog.showModal();
+    document.getElementById("bd_title").focus();
+  }
+
+  function renderBlockDialog(block){
+    const isEdit = !!block;
+    const title = block ? block.title : "";
+    const startStr = fmtClock24(block ? block.start : suggestedNewStart());
+    const activeCat = state.categories.find(c => c.id === formCategoryId);
+    const duration = block ? block.duration : (activeCat ? (activeCat.defaultMinutes || 30) : 30);
+    const soundtrackEnabled = block ? !!block.soundtrackEnabled : false;
+
+    let bodyFields = "";
+    if (!formIsBuffer){
+      const chips = state.categories.map(c =>
+        '<button type="button" class="template-chip' + (c.id === formCategoryId ? " selected" : "") + '" data-cat="' + c.id + '" style="--chip-color:' + c.color + ';">' +
+          c.icon + ' ' + escapeHtml(c.name) + ' &middot; ' + (c.defaultMinutes || 30) + 'm' +
+        '</button>'
+      ).join("");
+
+      bodyFields =
+        '<div class="field"><label id="bd_templateLabel">Template</label>' +
+          '<div class="template-chips" id="bd_templates" role="group" aria-labelledby="bd_templateLabel">' + chips + '</div>' +
+        '</div>' +
+        '<div id="bd_nudge"></div>' +
+        '<button type="button" class="text-btn" id="bd_moreToggle">' + (formMoreOpen ? "Fewer options ▲" : "More options ▾") + '</button>' +
+        '<div id="bd_moreWrap" style="display:' + (formMoreOpen ? "" : "none") + '; margin-top:10px;">' +
+          '<div class="field"><button type="button" class="text-btn" id="bd_addStepLink">+ Add a step</button></div>' +
+          '<div id="bd_subtasks"></div>' +
+          '<div class="checkbox-field">' +
+            '<input type="checkbox" id="bd_soundtrack" ' + (soundtrackEnabled ? "checked" : "") + '>' +
+            '<label for="bd_soundtrack">Play a timer-length soundtrack for this block (prototype stub)</label>' +
+          '</div>' +
+          '<div class="checkbox-field">' +
+            '<input type="checkbox" id="bd_addBuffer">' +
+            '<label for="bd_addBuffer">Add a short buffer right after this block</label>' +
+          '</div>' +
+          '<div class="field" id="bd_bufferMinWrap" style="display:none;">' +
+            '<label for="bd_bufferMin">Buffer length (minutes)</label>' +
+            '<input type="number" id="bd_bufferMin" min="5" max="20" step="5" value="5">' +
+          '</div>' +
+        '</div>';
+    }
+
+    document.getElementById("blockDialogInner").innerHTML =
+      '<h2 id="blockDialogTitle">' + (isEdit ? (formIsBuffer ? "Edit buffer" : "Edit block") : "New block") + '</h2>' +
+      '<p class="dialog-sub">' + (formIsBuffer ? "Buffers are short transition blocks between tasks." : "Pick a template, name it, and set when it starts &mdash; everything else is optional.") + '</p>' +
+      '<div class="field"><label for="bd_title">Title</label>' +
+        '<input type="text" id="bd_title" value="' + escapeAttr(title) + '" placeholder="' + (formIsBuffer ? "Buffer" : "e.g. Write report") + '"></div>' +
+      bodyFields +
+      '<div class="field-row" style="margin-top:14px;">' +
+        '<div class="field"><label for="bd_start">Start time</label><input type="time" id="bd_start" value="' + startStr + '"></div>' +
+        '<div class="field"><label for="bd_duration">Duration (minutes)</label><input type="number" id="bd_duration" min="5" step="5" value="' + duration + '"></div>' +
+      '</div>' +
+      '<div class="dialog-actions">' +
+        '<div>' + (isEdit ? '<button type="button" class="quiet-btn" id="bd_delete">Delete</button>' : '') + '</div>' +
+        '<div class="right-group">' +
+          '<button type="button" class="ghost-btn" id="bd_cancel">Cancel</button>' +
+          '<button type="button" class="primary-btn" id="bd_save">Save</button>' +
+        '</div>' +
+      '</div>';
+
+    document.getElementById("bd_cancel").addEventListener("click", () => blockDialog.close());
+    document.getElementById("bd_save").addEventListener("click", () => saveBlockForm());
+    const delBtn = document.getElementById("bd_delete");
+    if (delBtn) delBtn.addEventListener("click", () => {
+      if (confirm("Delete this block? This can't be undone.")){
+        state.blocks = state.blocks.filter(b => b.id !== formEditingId);
+        blockDialog.close();
+        commit();
+      }
+    });
+
+    if (!formIsBuffer){
+      document.getElementById("bd_templates").querySelectorAll(".template-chip").forEach(chip => {
+        chip.addEventListener("click", () => {
+          formCategoryId = chip.dataset.cat;
+          const cat = state.categories.find(c => c.id === formCategoryId);
+          if (cat) document.getElementById("bd_duration").value = cat.defaultMinutes || 30;
+          document.getElementById("bd_templates").querySelectorAll(".template-chip").forEach(c =>
+            c.classList.toggle("selected", c.dataset.cat === formCategoryId));
+          renderNudge();
+        });
+      });
+      document.getElementById("bd_duration").addEventListener("input", renderNudge);
+      document.getElementById("bd_moreToggle").addEventListener("click", () => {
+        formMoreOpen = !formMoreOpen;
+        document.getElementById("bd_moreWrap").style.display = formMoreOpen ? "" : "none";
+        document.getElementById("bd_moreToggle").textContent = formMoreOpen ? "Fewer options ▲" : "More options ▾";
+      });
+      renderSubtaskEditor();
+      renderNudge();
+      document.getElementById("bd_addStepLink").addEventListener("click", () => {
+        formSubtasks.push({ id: uid("st"), title: "", est: 10, done: false });
+        renderSubtaskEditor();
+      });
+      const addBufferChk = document.getElementById("bd_addBuffer");
+      addBufferChk.addEventListener("change", () => {
+        document.getElementById("bd_bufferMinWrap").style.display = addBufferChk.checked ? "" : "none";
+      });
+    }
+  }
+
+  function renderNudge(){
+    const wrap = document.getElementById("bd_nudge");
+    if (!wrap) return;
+    const duration = parseInt(document.getElementById("bd_duration").value, 10) || 0;
+    if (duration > state.nudgeThreshold && formSubtasks.length === 0 && !formDismissedNudge){
+      wrap.innerHTML =
+        '<div class="nudge-box">' +
+          '<p>This is a long block &mdash; want to break it into smaller steps?</p>' +
+          '<div class="nudge-actions">' +
+            '<button type="button" class="ghost-btn" id="bd_nudgeYes">Break it down</button>' +
+            '<button type="button" class="text-btn" id="bd_nudgeNo">No thanks</button>' +
+          '</div>' +
+        '</div>';
+      document.getElementById("bd_nudgeYes").addEventListener("click", () => {
+        formSubtasks.push({ id: uid("st"), title: "", est: 15, done: false });
+        formSubtasks.push({ id: uid("st"), title: "", est: 15, done: false });
+        formMoreOpen = true; // steps live under "More options" — open it so the new rows are visible
+        document.getElementById("bd_moreWrap").style.display = "";
+        document.getElementById("bd_moreToggle").textContent = "Fewer options ▲";
+        renderSubtaskEditor();
+        renderNudge();
+      });
+      document.getElementById("bd_nudgeNo").addEventListener("click", () => {
+        formDismissedNudge = true;
+        renderNudge();
+      });
+    } else {
+      wrap.innerHTML = "";
+    }
+  }
+
+  function renderSubtaskEditor(){
+    const wrap = document.getElementById("bd_subtasks");
+    if (!wrap) return;
+    wrap.innerHTML = formSubtasks.map((s, i) =>
+      '<div class="subtask-editor-row">' +
+        '<input type="text" data-idx="' + i + '" data-f="title" value="' + escapeAttr(s.title) + '" placeholder="Step name" aria-label="Step ' + (i+1) + ' name">' +
+        '<input type="number" data-idx="' + i + '" data-f="est" value="' + s.est + '" min="1" step="1" aria-label="Step ' + (i+1) + ' estimated minutes">' +
+        '<button type="button" class="icon-mini" data-idx="' + i + '" data-f="remove" aria-label="Remove step ' + (i+1) + '">✕</button>' +
+      '</div>'
+    ).join("");
+    wrap.querySelectorAll("input").forEach(inp => {
+      inp.addEventListener("input", () => {
+        const i = parseInt(inp.dataset.idx, 10);
+        const f = inp.dataset.f;
+        formSubtasks[i][f] = f === "est" ? (parseInt(inp.value,10) || 1) : inp.value;
+      });
+    });
+    wrap.querySelectorAll("button[data-f='remove']").forEach(btn => {
+      btn.addEventListener("click", () => {
+        formSubtasks.splice(parseInt(btn.dataset.idx,10), 1);
+        renderSubtaskEditor();
+        renderNudge();
+      });
+    });
+  }
+
+  function saveBlockForm(){
+    const titleVal = document.getElementById("bd_title").value.trim() || (formIsBuffer ? "Buffer" : "Untitled block");
+    const startVal = parseTime24(document.getElementById("bd_start").value);
+    const durationVal = Math.max(5, parseInt(document.getElementById("bd_duration").value, 10) || 5);
+
+    let block;
+    if (formEditingId){
+      block = state.blocks.find(b => b.id === formEditingId);
+      block.title = titleVal;
+      block.start = startVal;
+      block.duration = durationVal;
+    } else {
+      block = mkBlock(titleVal, null, startVal, durationVal, formIsBuffer, [], false);
+      state.blocks.push(block);
+    }
+
+    if (!formIsBuffer){
+      block.categoryId = formCategoryId || (state.categories[0] ? state.categories[0].id : null);
+      block.soundtrackEnabled = document.getElementById("bd_soundtrack").checked;
+      block.subtasks = formSubtasks.filter(s => s.title.trim().length > 0).map(s => ({ id: s.id, title: s.title.trim(), est: s.est, done: !!s.done }));
+
+      const addBufferChk = document.getElementById("bd_addBuffer");
+      if (addBufferChk && addBufferChk.checked){
+        const bufMin = parseInt(document.getElementById("bd_bufferMin").value, 10) || 5;
+        const point = block.start + block.duration;
+        const buf = mkBuffer(point, bufMin);
+        state.blocks.push(buf);
+        shiftBlocksFrom(point, bufMin, new Set([buf.id, block.id]));
+      }
+    }
+
+    blockDialog.close();
+    commit();
+  }
+
+  /* ---------------------------------------------------------------------
+     Settings dialog (categories + nudge threshold)
+  --------------------------------------------------------------------- */
+  const settingsDialog = document.getElementById("settingsDialog");
+  document.getElementById("settingsBtn").addEventListener("click", () => {
+    renderSettingsDialog();
+    settingsDialog.showModal();
+  });
+
+  function renderSettingsDialog(){
+    const inner = document.getElementById("settingsDialogInner");
+    inner.innerHTML =
+      '<h2 id="settingsDialogTitle">Settings</h2>' +
+      '<p class="dialog-sub">Saved on this device' + (cloudEnabled && currentUser && !offlineMode ? ' and synced to your account.' : '.') + '</p>' +
+
+      '<h3 style="font-size:13.5px;margin:0 0 8px;">Alarm sound</h3>' +
+      '<div class="checkbox-field">' +
+        '<input type="checkbox" id="st_soundEnabled" ' + (state.soundEnabled ? "checked" : "") + '>' +
+        '<label for="st_soundEnabled">Play a soft chime when a block starts</label>' +
+      '</div>' +
+      '<div class="field">' +
+        '<label for="st_soundVolume">Volume</label>' +
+        '<input type="range" id="st_soundVolume" min="0" max="1" step="0.1" value="' + state.soundVolume + '" style="width:100%;">' +
+      '</div>' +
+      '<div class="field"><button type="button" class="quiet-btn" id="st_testSound">Test sound</button></div>' +
+      (speechSupported ?
+        '<div class="checkbox-field">' +
+          '<input type="checkbox" id="st_speakEnabled" ' + (state.speakEnabled ? "checked" : "") + '>' +
+          '<label for="st_speakEnabled">Also say the time and plan out loud when a block starts</label>' +
+        '</div>' +
+        '<div class="field"><button type="button" class="quiet-btn" id="st_testSpeak">Test voice</button></div>'
+      : '') +
+
+      '<h3 style="font-size:13.5px;margin:16px 0 8px;">Task breakdown</h3>' +
+      '<div class="field"><label for="st_threshold">Nudge threshold (minutes)</label>' +
+        '<input type="number" id="st_threshold" min="10" step="5" value="' + state.nudgeThreshold + '"></div>' +
+
+      '<h3 style="font-size:13.5px;margin:16px 0 8px;">Categories</h3>' +
+      '<div id="st_catRows"></div>' +
+      '<div class="field"><button type="button" class="text-btn" id="st_addCat">+ Add category</button></div>' +
+
+      '<h3 style="font-size:13.5px;margin:16px 0 8px;">Testing tools</h3>' +
+      '<p class="dialog-sub" style="margin-bottom:8px;">Speeds up the on-screen clock so you can see timers shrink without waiting — not a real feature, and it never changes when real reminders fire.</p>' +
+      '<div class="seg" id="speedSeg" style="border:1px solid var(--border); border-radius:999px; padding:4px; width:max-content;">' +
+        '<button type="button" data-action="speed" data-speed="1">1x</button>' +
+        '<button type="button" data-action="speed" data-speed="10">10x</button>' +
+        '<button type="button" data-action="speed" data-speed="60">60x</button>' +
+      '</div>' +
+
+      '<div class="dialog-actions"><div></div><div class="right-group"><button type="button" class="primary-btn" id="st_done">Done</button></div></div>';
+
+    document.getElementById("st_soundEnabled").addEventListener("change", (e) => {
+      state.soundEnabled = e.target.checked;
+    });
+    document.getElementById("st_soundVolume").addEventListener("input", (e) => {
+      state.soundVolume = parseFloat(e.target.value);
+    });
+    document.getElementById("st_testSound").addEventListener("click", () => {
+      const was = state.soundEnabled;
+      state.soundEnabled = true;
+      playAlarmChime();
+      state.soundEnabled = was;
+    });
+    if (speechSupported){
+      document.getElementById("st_speakEnabled").addEventListener("change", (e) => {
+        state.speakEnabled = e.target.checked;
+      });
+      document.getElementById("st_testSpeak").addEventListener("click", () => speakNow());
+    }
+    document.getElementById("st_threshold").addEventListener("input", (e) => {
+      state.nudgeThreshold = Math.max(5, parseInt(e.target.value, 10) || 45);
+    });
+    document.getElementById("st_addCat").addEventListener("click", () => {
+      state.categories.push({ id: uid("cat"), name: "New category", color: "#84a0ab", icon: "•" });
+      renderCatRows();
+    });
+    document.getElementById("st_done").addEventListener("click", () => {
+      settingsDialog.close();
+      commit();
+    });
+    renderCatRows();
+    updateSimClock(); // sync the just-rendered speed buttons' active state
+  }
+
+  function renderCatRows(){
+    const wrap = document.getElementById("st_catRows");
+    wrap.innerHTML = state.categories.map(c => {
+      const inUse = state.blocks.some(b => b.categoryId === c.id);
+      return (
+        '<div class="cat-manage-row" data-cat="' + c.id + '">' +
+          '<input type="color" class="color-swatch-input" data-f="color" value="' + c.color + '" aria-label="' + escapeAttr(c.name) + ' color">' +
+          '<input type="text" class="cicon" data-f="icon" value="' + escapeAttr(c.icon) + '" maxlength="2" aria-label="' + escapeAttr(c.name) + ' icon">' +
+          '<input type="text" class="cname" data-f="name" value="' + escapeAttr(c.name) + '" aria-label="Category name">' +
+          '<button type="button" class="icon-mini" data-f="remove" ' + (inUse ? 'disabled title="In use by existing blocks"' : 'title="Delete category"') + '>🗑️</button>' +
+        '</div>'
+      );
+    }).join("");
+
+    wrap.querySelectorAll(".cat-manage-row").forEach(row => {
+      const id = row.dataset.cat;
+      const cat = state.categories.find(c => c.id === id);
+      row.querySelectorAll("input").forEach(inp => {
+        inp.addEventListener("input", () => { cat[inp.dataset.f] = inp.value; });
+      });
+      const rm = row.querySelector("button[data-f='remove']");
+      rm.addEventListener("click", () => {
+        if (rm.disabled) return;
+        state.categories = state.categories.filter(c => c.id !== id);
+        renderCatRows();
+      });
+    });
+  }
+
+  /* ---------------------------------------------------------------------
+     Cloud auth screen + boot sequence
+  --------------------------------------------------------------------- */
+  function setCloudStatus(mode, text){
+    const el = document.getElementById("cloudStatus");
+    if (!cloudEnabled || offlineMode || !currentUser){ el.style.display = "none"; return; }
+    el.style.display = "";
+    el.className = "cloud-status " + mode;
+    document.getElementById("cloudStatusText").textContent = text;
+  }
+
+  function showAuthScreen(){
+    document.getElementById("authScreen").style.display = "";
+    document.getElementById("mainApp").style.display = "none";
+    document.getElementById("mainFooter").style.display = "none";
+    document.getElementById("signOutBtn").style.display = "none";
+    document.getElementById("authEmail").focus();
+  }
+
+  function showMainApp(){
+    const signedIn = cloudEnabled && currentUser && !offlineMode;
+    document.getElementById("authScreen").style.display = "none";
+    document.getElementById("mainApp").style.display = "";
+    document.getElementById("mainFooter").style.display = "";
+    document.getElementById("signOutBtn").style.display = signedIn ? "" : "none";
+    document.getElementById("footerStorageNote").textContent = signedIn
+      ? "Your schedule is synced to your account."
+      : "Your schedule is saved on this device only (no account, no cloud sync).";
+  }
+
+  function finishBoot(){
+    appBooted = true;
+    showMainApp();
+    state.simNow = actualNowMinutes();
+    const already = getCurrentBlock();
+    lastCurrentBlockId = already ? already.id : null; // don't chime for a block already in progress at launch
+    updateSimClock();
+    render();
+    initNotifications();
+  }
+
+  async function loadCloudState(userId){
+    try {
+      const { data, error } = await sb.from("timeanchor_state").select("data").eq("user_id", userId).maybeSingle();
+      if (error) throw error;
+      return data ? data.data : null;
+    } catch (e) { return null; }
+  }
+
+  async function saveCloudState(){
+    if (!cloudEnabled || !currentUser || offlineMode) return;
+    try {
+      const payload = {
+        nudgeThreshold: state.nudgeThreshold, categories: state.categories,
+        blocks: state.blocks, savedForDate: state.savedForDate,
+        soundEnabled: state.soundEnabled, soundVolume: state.soundVolume, speakEnabled: state.speakEnabled
+      };
+      const { error } = await sb.from("timeanchor_state").upsert({
+        user_id: currentUser.id, data: payload, updated_at: new Date().toISOString()
+      });
+      if (error) throw error;
+      setCloudStatus("synced", "Synced");
+    } catch (e) {
+      setCloudStatus("error", "Sync failed — saved on this device");
+    }
+  }
+
+  async function onAuthed(user){
+    currentUser = user;
+    setCloudStatus("syncing", "Loading…");
+    const cloud = await loadCloudState(user.id);
+    if (cloud){
+      Object.assign(state, cloud);
+    } else {
+      // First login for this account — seed from any existing on-device
+      // schedule if there is one, otherwise the default day template.
+      const local = loadPersisted();
+      Object.assign(state, local || {
+        nudgeThreshold: 45, categories: defaultCategories(), blocks: defaultBlocks(), savedForDate: todayStr(),
+        soundEnabled: true, soundVolume: 0.6, speakEnabled: false
+      });
+      await saveCloudState();
+    }
+    finishBoot();
+    setCloudStatus("synced", "Synced");
+  }
+
+  let authMode = "login";
+  function setAuthMode(mode){
+    authMode = mode;
+    document.getElementById("authTabLogin").classList.toggle("active", mode === "login");
+    document.getElementById("authTabLogin").setAttribute("aria-selected", String(mode === "login"));
+    document.getElementById("authTabSignup").classList.toggle("active", mode === "signup");
+    document.getElementById("authTabSignup").setAttribute("aria-selected", String(mode === "signup"));
+    document.getElementById("authSubmit").textContent = mode === "login" ? "Log in" : "Sign up";
+    document.getElementById("authPassword").autocomplete = mode === "login" ? "current-password" : "new-password";
+    document.getElementById("authError").textContent = "";
+  }
+  document.getElementById("authTabLogin").addEventListener("click", () => setAuthMode("login"));
+  document.getElementById("authTabSignup").addEventListener("click", () => setAuthMode("signup"));
+
+  document.getElementById("authForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = document.getElementById("authEmail").value.trim();
+    const password = document.getElementById("authPassword").value;
+    const errEl = document.getElementById("authError");
+    const submitBtn = document.getElementById("authSubmit");
+    errEl.textContent = "";
+    submitBtn.disabled = true;
+    try {
+      const { data, error } = authMode === "login"
+        ? await sb.auth.signInWithPassword({ email, password })
+        : await sb.auth.signUp({ email, password });
+      if (error) { errEl.textContent = error.message; return; }
+      if (authMode === "signup" && !data.session){
+        errEl.textContent = "Check your email to confirm your account, then log in.";
+        setAuthMode("login");
+        return;
+      }
+      await onAuthed(data.user);
+    } catch (err) {
+      errEl.textContent = "Something went wrong — please try again.";
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  document.getElementById("authOfflineLink").addEventListener("click", (e) => {
+    e.preventDefault();
+    offlineMode = true;
+    finishBoot();
+  });
+
+  document.getElementById("signOutBtn").addEventListener("click", async () => {
+    if (sb) { try { await sb.auth.signOut(); } catch (e) {} }
+    location.reload();
+  });
+
+  if (speechSupported){
+    const speakBtn = document.getElementById("speakNowBtn");
+    speakBtn.style.display = "";
+    speakBtn.addEventListener("click", () => speakNow());
+  }
+
+  async function boot(){
+    if (!cloudEnabled){
+      finishBoot();
+      return;
+    }
+    try {
+      const { data } = await sb.auth.getSession();
+      if (data && data.session && data.session.user){
+        await onAuthed(data.session.user);
+      } else {
+        showAuthScreen();
+      }
+    } catch (e) {
+      finishBoot(); // cloud unreachable — fall back to local-only rather than block the app
+    }
+  }
+  boot();
+})();
+</script>
+</body>
+</html>

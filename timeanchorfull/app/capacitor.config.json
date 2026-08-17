@@ -1,0 +1,15 @@
+{
+  "appId": "com.timeanchor.audhd",
+  "appName": "TimeAnchor",
+  "webDir": "www",
+  "backgroundColor": "#f6f4ef",
+  "android": {
+    "backgroundColor": "#f6f4ef"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_timeanchor",
+      "iconColor": "#4d6b86"
+    }
+  }
+}
