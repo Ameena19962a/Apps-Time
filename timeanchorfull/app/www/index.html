@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="en">
 <head>
@@ -306,7 +307,7 @@
 <header class="app-header">
   <div class="brand">
     <h1>TimeAnchor</h1>
-    <p>A time-blocking app for time-blindness &middot; saved on this device</p>
+    <p id="brandTagline">A time-blocking app for time-blindness &middot; saved on this device</p>
   </div>
   <div class="header-controls">
     <div class="sim-clock" id="simClockWrap" title="Speed and other testing tools are in Settings"><strong id="simClockText">--:--</strong></div>
@@ -504,7 +505,8 @@
         savedForDate: state.savedForDate,
         soundEnabled: state.soundEnabled,
         soundVolume: state.soundVolume,
-        speakEnabled: state.speakEnabled
+        speakEnabled: state.speakEnabled,
+        firstName: state.firstName
       }));
     } catch (e) { /* storage unavailable — app still works for this session */ }
   }
@@ -521,6 +523,7 @@
     soundEnabled: persisted.soundEnabled !== false,
     soundVolume: typeof persisted.soundVolume === "number" ? persisted.soundVolume : 0.6,
     speakEnabled: persisted.speakEnabled === true,
+    firstName: persisted.firstName || "",
     demoOffset: 0,
     speed: 1
   } : {
@@ -531,6 +534,7 @@
     soundEnabled: true,
     soundVolume: 0.6,
     speakEnabled: false,
+    firstName: "",
     demoOffset: 0,
     speed: 1
   };
@@ -1152,7 +1156,6 @@
   }
 
   let formCategoryId = null;
-  let formMoreOpen = false;
 
   function openBlockForm(block){
     formEditingId = block ? block.id : null;
@@ -1160,7 +1163,6 @@
     formSubtasks = block && block.subtasks ? block.subtasks.map(s => ({...s})) : [];
     formCategoryId = block ? block.categoryId : (state.categories[0] ? state.categories[0].id : null);
     formDismissedNudge = false;
-    formMoreOpen = false;
     renderBlockDialog(block);
     blockDialog.showModal();
     document.getElementById("bd_title").focus();
@@ -1183,26 +1185,25 @@
       ).join("");
 
       bodyFields =
-        '<div class="field"><label id="bd_templateLabel">Template</label>' +
+        '<div class="field"><label id="bd_templateLabel">Template <span style="font-weight:400;color:var(--muted);">(optional shortcut &mdash; sets category + a default length in one tap)</span></label>' +
           '<div class="template-chips" id="bd_templates" role="group" aria-labelledby="bd_templateLabel">' + chips + '</div>' +
         '</div>' +
         '<div id="bd_nudge"></div>' +
-        '<button type="button" class="text-btn" id="bd_moreToggle">' + (formMoreOpen ? "Fewer options ▲" : "More options ▾") + '</button>' +
-        '<div id="bd_moreWrap" style="display:' + (formMoreOpen ? "" : "none") + '; margin-top:10px;">' +
-          '<div class="field"><button type="button" class="text-btn" id="bd_addStepLink">+ Add a step</button></div>' +
-          '<div id="bd_subtasks"></div>' +
-          '<div class="checkbox-field">' +
-            '<input type="checkbox" id="bd_soundtrack" ' + (soundtrackEnabled ? "checked" : "") + '>' +
-            '<label for="bd_soundtrack">Play a timer-length soundtrack for this block (prototype stub)</label>' +
-          '</div>' +
-          '<div class="checkbox-field">' +
-            '<input type="checkbox" id="bd_addBuffer">' +
-            '<label for="bd_addBuffer">Add a short buffer right after this block</label>' +
-          '</div>' +
-          '<div class="field" id="bd_bufferMinWrap" style="display:none;">' +
-            '<label for="bd_bufferMin">Buffer length (minutes)</label>' +
-            '<input type="number" id="bd_bufferMin" min="5" max="20" step="5" value="5">' +
-          '</div>' +
+        '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--muted);">Steps (optional)</h3>' +
+        '<div class="field"><button type="button" class="text-btn" id="bd_addStepLink">+ Add a step</button></div>' +
+        '<div id="bd_subtasks"></div>' +
+        '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--muted);">Extras (optional)</h3>' +
+        '<div class="checkbox-field">' +
+          '<input type="checkbox" id="bd_soundtrack" ' + (soundtrackEnabled ? "checked" : "") + '>' +
+          '<label for="bd_soundtrack">Play a timer-length soundtrack for this block (prototype stub)</label>' +
+        '</div>' +
+        '<div class="checkbox-field">' +
+          '<input type="checkbox" id="bd_addBuffer">' +
+          '<label for="bd_addBuffer">Add a short buffer right after this block</label>' +
+        '</div>' +
+        '<div class="field" id="bd_bufferMinWrap" style="display:none;">' +
+          '<label for="bd_bufferMin">Buffer length (minutes)</label>' +
+          '<input type="number" id="bd_bufferMin" min="5" max="20" step="5" value="5">' +
         '</div>';
     }
 
@@ -1247,11 +1248,6 @@
         });
       });
       document.getElementById("bd_duration").addEventListener("input", renderNudge);
-      document.getElementById("bd_moreToggle").addEventListener("click", () => {
-        formMoreOpen = !formMoreOpen;
-        document.getElementById("bd_moreWrap").style.display = formMoreOpen ? "" : "none";
-        document.getElementById("bd_moreToggle").textContent = formMoreOpen ? "Fewer options ▲" : "More options ▾";
-      });
       renderSubtaskEditor();
       renderNudge();
       document.getElementById("bd_addStepLink").addEventListener("click", () => {
@@ -1281,9 +1277,6 @@
       document.getElementById("bd_nudgeYes").addEventListener("click", () => {
         formSubtasks.push({ id: uid("st"), title: "", est: 15, done: false });
         formSubtasks.push({ id: uid("st"), title: "", est: 15, done: false });
-        formMoreOpen = true; // steps live under "More options" — open it so the new rows are visible
-        document.getElementById("bd_moreWrap").style.display = "";
-        document.getElementById("bd_moreToggle").textContent = "Fewer options ▲";
         renderSubtaskEditor();
         renderNudge();
       });
@@ -1372,6 +1365,9 @@
       '<h2 id="settingsDialogTitle">Settings</h2>' +
       '<p class="dialog-sub">Saved on this device' + (cloudEnabled && currentUser && !offlineMode ? ' and synced to your account.' : '.') + '</p>' +
 
+      '<div class="field"><label for="st_firstName">Your name</label>' +
+        '<input type="text" id="st_firstName" value="' + escapeAttr(state.firstName) + '" placeholder="e.g. Sam"></div>' +
+
       '<h3 style="font-size:13.5px;margin:0 0 8px;">Alarm sound</h3>' +
       '<div class="checkbox-field">' +
         '<input type="checkbox" id="st_soundEnabled" ' + (state.soundEnabled ? "checked" : "") + '>' +
@@ -1432,6 +1428,10 @@
     document.getElementById("st_addCat").addEventListener("click", () => {
       state.categories.push({ id: uid("cat"), name: "New category", color: "#84a0ab", icon: "•" });
       renderCatRows();
+    });
+    document.getElementById("st_firstName").addEventListener("input", (e) => {
+      state.firstName = e.target.value.trim();
+      updateGreeting();
     });
     document.getElementById("st_done").addEventListener("click", () => {
       settingsDialog.close();
@@ -1500,6 +1500,14 @@
       : "Your schedule is saved on this device only (no account, no cloud sync).";
   }
 
+  function updateGreeting(){
+    const el = document.getElementById("brandTagline");
+    if (!el) return;
+    el.textContent = state.firstName
+      ? "Welcome, " + state.firstName + " — saved on this device"
+      : "A time-blocking app for time-blindness · saved on this device";
+  }
+
   function finishBoot(){
     appBooted = true;
     showMainApp();
@@ -1507,6 +1515,7 @@
     const already = getCurrentBlock();
     lastCurrentBlockId = already ? already.id : null; // don't chime for a block already in progress at launch
     updateSimClock();
+    updateGreeting();
     render();
     initNotifications();
   }
@@ -1525,7 +1534,8 @@
       const payload = {
         nudgeThreshold: state.nudgeThreshold, categories: state.categories,
         blocks: state.blocks, savedForDate: state.savedForDate,
-        soundEnabled: state.soundEnabled, soundVolume: state.soundVolume, speakEnabled: state.speakEnabled
+        soundEnabled: state.soundEnabled, soundVolume: state.soundVolume, speakEnabled: state.speakEnabled,
+        firstName: state.firstName
       };
       const { error } = await sb.from("timeanchor_state").upsert({
         user_id: currentUser.id, data: payload, updated_at: new Date().toISOString()
@@ -1549,7 +1559,7 @@
       const local = loadPersisted();
       Object.assign(state, local || {
         nudgeThreshold: 45, categories: defaultCategories(), blocks: defaultBlocks(), savedForDate: todayStr(),
-        soundEnabled: true, soundVolume: 0.6, speakEnabled: false
+        soundEnabled: true, soundVolume: 0.6, speakEnabled: false, firstName: ""
       });
       await saveCloudState();
     }
